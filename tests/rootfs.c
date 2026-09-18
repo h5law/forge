@@ -162,6 +162,28 @@ static void test_copy_non_regular(void)
     test_pass();
 }
 
+static void test_copy_interpreter(void)
+{
+    struct forge_rootfs rootfs;
+    const char         *interpreter = "/lib64/ld-linux-x86-64.so.2";
+
+    test_begin("copy dynamic linker into rootfs");
+
+    if (access(interpreter, F_OK) != 0) {
+        test_skip();
+        return;
+    }
+
+    assert(forge_rootfs_init(&rootfs, "tests/rootfs-copy") == 0);
+
+    assert(forge_rootfs_copy(&rootfs, interpreter) == 0);
+    assert(access("tests/rootfs-copy/lib64/ld-linux-x86-64.so.2", F_OK) == 0);
+
+    forge_rootfs_free(&rootfs);
+
+    test_pass();
+}
+
 static void test_invalid_source(void)
 {
     struct forge_rootfs rootfs;
@@ -207,6 +229,7 @@ int main(void)
     test_copy_nested_binary();
     test_copy_missing_source();
     test_copy_non_regular();
+    test_copy_interpreter();
     test_invalid_source();
     test_null_arguments();
 

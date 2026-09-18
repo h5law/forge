@@ -243,6 +243,13 @@ int forge_rootfs_copy(struct forge_rootfs *rootfs, const char *source)
         return -1;
     }
 
+    if (unlink(destination) < 0 && errno != ENOENT) {
+        fprintf(stderr, "failed to remove existing %s: %s\n", destination,
+                strerror(errno));
+        free(destination);
+        return -1;
+    }
+
     printf("Copying %s -> %s\n", source, destination);
 
     int result = copy_file(source, destination, status.st_mode & 07777);

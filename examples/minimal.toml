@@ -9,5 +9,5 @@ output = "./rootfs"
 [binaries]
 paths = [
     "/bin/sh",
-    "/bin/ls",
+    "/usr/bin/curl",
 ]

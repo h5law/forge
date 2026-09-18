@@ -159,6 +159,11 @@ static int run_build(const char *path)
             }
         }
 
+        if (result == EXIT_SUCCESS && tree.interpreter != NULL) {
+            if (forge_rootfs_copy(&rootfs, tree.interpreter) < 0)
+                result = EXIT_FAILURE;
+        }
+
         forge_dependency_tree_free(&tree);
 
         if (result != EXIT_SUCCESS)
