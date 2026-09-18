@@ -6,9 +6,11 @@ forge
 compile_commands.json
 
 # Tests
-tests/test-config
-tests/test-alpine
-tests/test-elf
+tests/test-*
+tests/fixtures/bin
+tests/fixtures/child
+tests/fixtures/lib
+tests/fixtures/rpath.toml
 
 # rootfs
 rootfs/*

@@ -1,6 +1,7 @@
 #include <alpine.h>
 #include <config.h>
 #include <elf_parser.h>
+#include <resolver.h>
 
 #include <getopt.h>
 #include <stdio.h>
@@ -126,13 +127,48 @@ static int run_build(const char *path)
     return result < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
-static void print_dependency_tree(const struct forge_elf *elf)
+static void print_dependency_tree(const struct forge_dependency *dependency,
+                                  const char *prefix, int last)
 {
-    for (size_t i = 0; i < elf->needed_count; ++i) {
-        const char *branch = i + 1 == elf->needed_count ? "└── " : "├── ";
+    printf("%s%s%s\n", prefix, last ? "└── " : "├── ", dependency->name);
 
-        printf("%s%s\n", branch, elf->needed[i]);
+    size_t prefix_length = strlen(prefix);
+
+    char *child_prefix   = malloc(prefix_length + 5);
+
+    if (child_prefix == NULL)
+        return;
+
+    memcpy(child_prefix, prefix, prefix_length);
+
+    if (last)
+        memcpy(child_prefix + prefix_length, "    ", 4);
+    else
+        memcpy(child_prefix + prefix_length, "│   ", 4);
+
+    child_prefix[prefix_length + 4] = '\0';
+
+    for (size_t i = 0; i < dependency->child_count; ++i) {
+        print_dependency_tree(dependency->children[i], child_prefix,
+                              i + 1 == dependency->child_count);
     }
+
+    free(child_prefix);
+}
+
+static int dependency_is_child(const struct forge_dependency_tree *tree,
+                               const struct forge_dependency      *dependency)
+{
+    for (size_t i = 0; i < tree->count; ++i) {
+        const struct forge_dependency *candidate = tree->dependencies[i];
+
+        for (size_t j = 0; j < candidate->child_count; ++j) {
+            if (candidate->children[j] == dependency)
+                return 1;
+        }
+    }
+
+    return 0;
 }
 
 static int run_deps(const char *path)
@@ -147,23 +183,41 @@ static int run_deps(const char *path)
     for (size_t i = 0; i < config.binaries.count; ++i) {
         const char *binary = config.binaries.paths[i];
 
-        struct forge_elf elf;
+        struct forge_dependency_tree tree;
 
-        if (forge_elf_parse(binary, &elf) < 0) {
+        if (forge_resolve_dependencies(binary, &tree) < 0) {
             result = EXIT_FAILURE;
             continue;
         }
 
         printf("%s\n", binary);
 
-        if (elf.interpreter != NULL)
-            printf("├── interpreter: %s\n", elf.interpreter);
+        if (tree.interpreter != NULL)
+            printf("├── interpreter: %s\n", tree.interpreter);
 
-        print_dependency_tree(&elf);
+        size_t root_count = 0;
+
+        for (size_t j = 0; j < tree.count; ++j) {
+            if (!dependency_is_child(&tree, tree.dependencies[j]))
+                ++root_count;
+        }
+
+        size_t root_index = 0;
+
+        for (size_t j = 0; j < tree.count; ++j) {
+            struct forge_dependency *dependency = tree.dependencies[j];
+
+            if (dependency_is_child(&tree, dependency))
+                continue;
+
+            ++root_index;
+
+            print_dependency_tree(dependency, "", root_index == root_count);
+        }
 
         printf("\n");
 
-        forge_elf_free(&elf);
+        forge_dependency_tree_free(&tree);
     }
 
     forge_config_free(&config);
