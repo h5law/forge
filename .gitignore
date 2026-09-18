@@ -4,7 +4,10 @@ forge
 # Outputs
 */*.o
 compile_commands.json
-test-config
+
+# Tests
+tests/test-config
+tests/test-alpine
 
 # rootfs
 rootfs/*
