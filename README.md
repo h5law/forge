@@ -518,11 +518,16 @@ forge/
 
 ### Dependency Resolution
 
-- [ ] Implement host library resolution
-- [ ] Implement recursive dependency graph
-- [ ] Handle library search paths (`RPATH`, `RUNPATH`, system paths)
-- [ ] Detect missing dependencies
-- [ ] Detect dependency cycles
+- [x] Implement host library resolution
+- [x] Implement recursive dependency graph
+- [x] Handle library search paths (`RPATH`, `RUNPATH`, system paths)
+- [x] Expand `$ORIGIN` in library search paths
+- [x] Handle inherited `RPATH`
+- [x] Distinguish transitive `RPATH` from non-transitive `RUNPATH`
+- [x] Detect missing dependencies
+- [x] Detect dependency cycles
+- [x] Resolve and validate required dynamic linkers
+- [x] Validate dependency ELF architecture
 
 ### rootfs Assembly
 
