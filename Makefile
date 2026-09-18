@@ -46,16 +46,19 @@ $(FORGE): \
 	src/alpine.c \
 	src/elf.c \
 	src/resolver.c \
+	src/rootfs.c \
 	include/config.h \
 	include/alpine.h \
 	include/elf_parser.h \
-	include/resolver.h
+	include/resolver.h \
+	include/rootfs.h
 	$(CC) $(CFLAGS) -o $@ \
 		src/main.c \
 		src/config.c \
 		src/alpine.c \
 		src/elf.c \
-		src/resolver.c
+		src/resolver.c \
+		src/rootfs.c
 
 
 .PHONY: test
@@ -195,6 +198,7 @@ clean:
 		$(TEST_RESOLVER) \
 		$(TEST_ROOTFS) \
 		tests/test-rootfs \
+		tests/rootfs-copy \
 		$(FIXTURE_BIN_DIR) \
 		$(FIXTURE_CHILD_DIR) \
 		$(FIXTURE_LIB_DIR) \
