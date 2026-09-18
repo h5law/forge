@@ -90,13 +90,14 @@ static void test_copy_binary(void)
 
     remove_rootfs(output);
 
-    assert(stat("/bin/sh", &source_status) == 0);
+    assert(stat("/usr/bin/env", &source_status) == 0);
+    assert(S_ISREG(source_status.st_mode));
 
     assert(forge_rootfs_init(&rootfs, output) == 0);
 
-    assert(forge_rootfs_copy(&rootfs, "/bin/sh") == 0);
+    assert(forge_rootfs_copy(&rootfs, "/usr/bin/env") == 0);
 
-    assert(stat("tests/rootfs-copy/bin/sh", &destination_status) == 0);
+    assert(stat("tests/rootfs-copy/usr/bin/env", &destination_status) == 0);
     assert(S_ISREG(destination_status.st_mode));
 
     assert((destination_status.st_mode & 07777) ==
@@ -138,6 +139,57 @@ static void test_preserve_permissions(void)
     forge_rootfs_free(&rootfs);
 
     unlink(source);
+    remove_rootfs(output);
+
+    test_pass();
+}
+
+static void test_copy_symlink(void)
+{
+    const char *source = "/tmp/forge-rootfs-symlink";
+    const char *target = "/tmp/forge-rootfs-target";
+    const char *output = "tests/rootfs-copy";
+
+    struct forge_rootfs rootfs;
+    struct stat         destination_status;
+
+    test_begin("copy symlink into rootfs");
+
+    remove_rootfs(output);
+    unlink(source);
+    unlink(target);
+
+    int target_fd = creat(target, 0644);
+
+    assert(target_fd >= 0);
+    assert(close(target_fd) == 0);
+    assert(symlink(target, source) == 0);
+
+    assert(lstat(source, &destination_status) == 0);
+    assert(S_ISLNK(destination_status.st_mode));
+
+    assert(forge_rootfs_init(&rootfs, output) == 0);
+    assert(forge_rootfs_copy(&rootfs, source) == 0);
+
+    assert(lstat("tests/rootfs-copy/tmp/forge-rootfs-symlink",
+                 &destination_status) == 0);
+    assert(S_ISLNK(destination_status.st_mode));
+
+    char buffer[256];
+
+    ssize_t length = readlink("tests/rootfs-copy/tmp/forge-rootfs-symlink",
+                              buffer, sizeof(buffer) - 1);
+
+    assert(length >= 0);
+
+    buffer[length] = '\0';
+
+    assert(strcmp(buffer, target) == 0);
+
+    forge_rootfs_free(&rootfs);
+
+    unlink(source);
+    unlink(target);
     remove_rootfs(output);
 
     test_pass();
@@ -262,6 +314,7 @@ int main(void)
     test_nested_path();
     test_copy_binary();
     test_preserve_permissions();
+    test_copy_symlink();
     test_copy_nested_binary();
     test_copy_missing_source();
     test_copy_non_regular();

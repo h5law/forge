@@ -172,6 +172,54 @@ static int copy_file(const char *source, const char *destination, mode_t mode)
     return result;
 }
 
+static int copy_symlink(const char *source, const char *destination)
+{
+    size_t capacity = 256;
+    char  *target   = NULL;
+
+    for (;;) {
+        target = malloc(capacity);
+
+        if (target == NULL)
+            return -1;
+
+        ssize_t length = readlink(source, target, capacity);
+
+        if (length < 0) {
+            fprintf(stderr, "failed to read symlink %s: %s\n", source,
+                    strerror(errno));
+            free(target);
+            return -1;
+        }
+
+        if (( size_t )length < capacity) {
+            target[length] = '\0';
+            break;
+        }
+
+        free(target);
+        target = NULL;
+
+        if (capacity > SIZE_MAX / 2) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+
+        capacity *= 2;
+    }
+
+    if (symlink(target, destination) < 0) {
+        fprintf(stderr, "failed to create symlink %s -> %s: %s\n", destination,
+                target, strerror(errno));
+        free(target);
+        return -1;
+    }
+
+    free(target);
+
+    return 0;
+}
+
 int forge_rootfs_init(struct forge_rootfs *rootfs, const char *path)
 {
     if (rootfs == NULL || path == NULL || path[0] == '\0') {
@@ -234,13 +282,14 @@ int forge_rootfs_copy(struct forge_rootfs *rootfs, const char *source)
 
     struct stat status;
 
-    if (stat(source, &status) < 0) {
+    if (lstat(source, &status) < 0) {
         fprintf(stderr, "failed to stat %s: %s\n", source, strerror(errno));
         return -1;
     }
 
-    if (!S_ISREG(status.st_mode)) {
-        fprintf(stderr, "source is not a regular file: %s\n", source);
+    if (!S_ISREG(status.st_mode) && !S_ISLNK(status.st_mode)) {
+        fprintf(stderr, "source is not a regular file or symlink: %s\n",
+                source);
         errno = EINVAL;
         return -1;
     }
@@ -266,7 +315,12 @@ int forge_rootfs_copy(struct forge_rootfs *rootfs, const char *source)
 
     printf("Copying %s -> %s\n", source, destination);
 
-    int result = copy_file(source, destination, status.st_mode & 07777);
+    int result;
+
+    if (S_ISLNK(status.st_mode))
+        result = copy_symlink(source, destination);
+    else
+        result = copy_file(source, destination, status.st_mode & 07777);
 
     free(destination);
 
