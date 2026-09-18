@@ -12,6 +12,9 @@ struct forge_elf {
     char **needed;
     size_t needed_count;
 
+    char *rpath;
+    char *runpath;
+
     int dynamic;
 };
 

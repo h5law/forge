@@ -4,6 +4,7 @@
 void test_begin(const char *name);
 void test_pass(void);
 void test_fail(const char *message);
+void test_skip();
 
 int test_run(void);
 

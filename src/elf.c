@@ -197,6 +197,12 @@ static int forge_elf_parse_internal(const char *path, struct forge_elf *elf,
     uint64_t strtab_address = 0;
     uint64_t strtab_size    = 0;
 
+    uint64_t rpath_offset   = 0;
+    uint64_t runpath_offset = 0;
+
+    int have_rpath          = 0;
+    int have_runpath        = 0;
+
     Elf64_Dyn dynamic;
 
     if (fseek(file, ( long )dynamic_header->p_offset, SEEK_SET) != 0) {
@@ -218,6 +224,16 @@ static int forge_elf_parse_internal(const char *path, struct forge_elf *elf,
 
         if (dynamic.d_tag == DT_STRSZ)
             strtab_size = dynamic.d_un.d_val;
+
+        if (dynamic.d_tag == DT_RPATH) {
+            rpath_offset = dynamic.d_un.d_val;
+            have_rpath   = 1;
+        }
+
+        if (dynamic.d_tag == DT_RUNPATH) {
+            runpath_offset = dynamic.d_un.d_val;
+            have_runpath   = 1;
+        }
     }
 
     if (strtab_address == 0 || strtab_size == 0) {
@@ -284,6 +300,90 @@ static int forge_elf_parse_internal(const char *path, struct forge_elf *elf,
         fclose(file);
         forge_elf_free(elf);
         return -1;
+    }
+
+    if (have_rpath) {
+        if (rpath_offset >= strtab_size) {
+            if (verbose)
+                fprintf(stderr, "%s: invalid DT_RPATH string offset\n", path);
+
+            free(strtab);
+            free(program_headers);
+            fclose(file);
+            forge_elf_free(elf);
+            return -1;
+        }
+
+        const char *rpath   = strtab + rpath_offset;
+
+        size_t rpath_length = strnlen(rpath, strtab_size - rpath_offset);
+
+        if (rpath_length == strtab_size - rpath_offset) {
+            if (verbose)
+                fprintf(stderr, "%s: unterminated DT_RPATH string\n", path);
+
+            free(strtab);
+            free(program_headers);
+            fclose(file);
+            forge_elf_free(elf);
+            return -1;
+        }
+
+        elf->rpath = strdup(rpath);
+
+        if (elf->rpath == NULL) {
+            if (verbose)
+                fprintf(stderr, "%s: failed to allocate DT_RPATH: %s\n", path,
+                        strerror(errno));
+
+            free(strtab);
+            free(program_headers);
+            fclose(file);
+            forge_elf_free(elf);
+            return -1;
+        }
+    }
+
+    if (have_runpath) {
+        if (runpath_offset >= strtab_size) {
+            if (verbose)
+                fprintf(stderr, "%s: invalid DT_RUNPATH string offset\n", path);
+
+            free(strtab);
+            free(program_headers);
+            fclose(file);
+            forge_elf_free(elf);
+            return -1;
+        }
+
+        const char *runpath   = strtab + runpath_offset;
+
+        size_t runpath_length = strnlen(runpath, strtab_size - runpath_offset);
+
+        if (runpath_length == strtab_size - runpath_offset) {
+            if (verbose)
+                fprintf(stderr, "%s: unterminated DT_RUNPATH string\n", path);
+
+            free(strtab);
+            free(program_headers);
+            fclose(file);
+            forge_elf_free(elf);
+            return -1;
+        }
+
+        elf->runpath = strdup(runpath);
+
+        if (elf->runpath == NULL) {
+            if (verbose)
+                fprintf(stderr, "%s: failed to allocate DT_RUNPATH: %s\n", path,
+                        strerror(errno));
+
+            free(strtab);
+            free(program_headers);
+            fclose(file);
+            forge_elf_free(elf);
+            return -1;
+        }
     }
 
     if (fseek(file, ( long )dynamic_header->p_offset, SEEK_SET) != 0) {
@@ -401,6 +501,8 @@ void forge_elf_free(struct forge_elf *elf)
         return;
 
     free(elf->interpreter);
+    free(elf->rpath);
+    free(elf->runpath);
 
     for (size_t i = 0; i < elf->needed_count; ++i)
         free(elf->needed[i]);
