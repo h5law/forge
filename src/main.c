@@ -137,10 +137,32 @@ static int run_build(const char *path)
     int result = EXIT_SUCCESS;
 
     for (size_t i = 0; i < config.binaries.count; ++i) {
-        if (forge_rootfs_copy(&rootfs, config.binaries.paths[i]) < 0) {
+        const char *binary = config.binaries.paths[i];
+
+        struct forge_dependency_tree tree;
+
+        if (forge_resolve_dependencies(binary, &tree) < 0) {
             result = EXIT_FAILURE;
             break;
         }
+
+        if (forge_rootfs_copy(&rootfs, binary) < 0) {
+            forge_dependency_tree_free(&tree);
+            result = EXIT_FAILURE;
+            break;
+        }
+
+        for (size_t j = 0; j < tree.count; ++j) {
+            if (forge_rootfs_copy(&rootfs, tree.dependencies[j]->path) < 0) {
+                result = EXIT_FAILURE;
+                break;
+            }
+        }
+
+        forge_dependency_tree_free(&tree);
+
+        if (result != EXIT_SUCCESS)
+            break;
     }
 
     forge_rootfs_free(&rootfs);
