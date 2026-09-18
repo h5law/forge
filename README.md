@@ -473,6 +473,7 @@ The project is intended to remain small and modular:
 forge/
 ├── include/
 │   ├── config.h
+│   ├── alpine.h
 │   ├── elf.h
 │   ├── resolver.h
 │   ├── rootfs.h
@@ -481,6 +482,7 @@ forge/
 ├── src/
 │   ├── main.c
 │   ├── config.c
+│   ├── alpine.c
 │   ├── elf.c
 │   ├── resolver.c
 │   ├── rootfs.c
@@ -501,25 +503,51 @@ forge/
 
 ## Roadmap
 
-* [x] Define configuration format
-* [ ] Download and extract Alpine minirootfs
-* [x] Validate requested host binaries
-* [ ] Implement ELF parser
-* [ ] Extract `PT_INTERP`
-* [ ] Extract `DT_NEEDED`
-* [ ] Implement host library resolution
-* [ ] Implement recursive dependency graph
-* [ ] Copy binaries and dependencies
-* [ ] Preserve filesystem metadata
-* [ ] Detect incompatible architectures
-* [ ] Detect incompatible dynamic linkers
-* [ ] Add deterministic builds
-* [ ] Add build manifest
-* [ ] Add caching
-* [ ] Add support for static binaries
-* [ ] Add support for scripts
-* [ ] Add support for additional architectures
-* [ ] Integrate with `cage`
+### Foundation
+
+- [x] Define configuration format
+- [x] Validate requested host binaries
+- [x] Download and extract Alpine minirootfs
+
+### ELF Analysis
+
+- [ ] Implement ELF parser
+- [ ] Validate ELF architecture
+- [ ] Extract `PT_INTERP`
+- [ ] Extract `DT_NEEDED`
+- [ ] Detect static binaries
+- [ ] Detect incompatible dynamic linkers
+
+### Dependency Resolution
+
+- [ ] Implement host library resolution
+- [ ] Implement recursive dependency graph
+- [ ] Handle library search paths (`RPATH`, `RUNPATH`, system paths)
+- [ ] Detect missing dependencies
+- [ ] Detect dependency cycles
+
+### rootfs Assembly
+
+- [ ] Copy requested binaries into the rootfs
+- [ ] Copy resolved libraries into the rootfs
+- [ ] Copy required dynamic linker
+- [ ] Preserve filesystem metadata
+- [ ] Handle symlinked libraries
+- [ ] Handle required parent directories
+
+### Special Cases
+
+- [ ] Add support for static binaries
+- [ ] Add support for scripts
+- [ ] Detect script interpreters
+- [ ] Add support for additional architectures
+
+### Reproducibility & UX
+
+- [ ] Add deterministic builds
+- [ ] Add build manifest
+- [ ] Add caching
+- [ ] Improve error reporting
 
 ## Philosophy
 

@@ -1,29 +1,12 @@
 #include <config.h>
 
+#include "utils.h"
+
 #include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <unistd.h>
-
-static unsigned tests_run;
-static unsigned tests_passed;
-
-static void test_begin(const char *name)
-{
-    printf("  %-50s ", name);
-    fflush(stdout);
-
-    ++tests_run;
-}
-
-static void test_pass(void)
-{
-    puts("[PASS]");
-    ++tests_passed;
-}
 
 static void write_fixture(const char *path, const char *contents)
 {
@@ -341,17 +324,25 @@ static void test_unsupported_distribution(void)
 {
     test_begin("reject unsupported distribution");
 
-    struct forge_config config = {
-            .base.distribution = "debian",
-            .base.version      = "13",
-            .base.architecture = "x86_64",
-            .rootfs.output     = "./rootfs",
-            .binaries.paths    = NULL,
-            .binaries.count    = 1,
-    };
+    char *binary               = "/bin/sh";
 
-    char *binary          = "/bin/sh";
-    config.binaries.paths = &binary;
+    struct forge_config config = {
+            .base =
+                    {
+                           .distribution = "debian",
+                           .version      = "13",
+                           .architecture = "x86_64",
+                           },
+            .rootfs =
+                    {
+                           .output = "./rootfs",
+                           },
+            .binaries =
+                    {
+                           .paths = &binary,
+                           .count = 1,
+                           },
+    };
 
     assert(forge_config_validate(&config) != 0);
 
@@ -362,17 +353,25 @@ static void test_unsupported_architecture(void)
 {
     test_begin("reject unsupported architecture");
 
-    struct forge_config config = {
-            .base.distribution = "alpine",
-            .base.version      = "3.22",
-            .base.architecture = "aarch64",
-            .rootfs.output     = "./rootfs",
-            .binaries.paths    = NULL,
-            .binaries.count    = 1,
-    };
+    char *binary               = "/bin/sh";
 
-    char *binary          = "/bin/sh";
-    config.binaries.paths = &binary;
+    struct forge_config config = {
+            .base =
+                    {
+                           .distribution = "alpine",
+                           .version      = "3.22",
+                           .architecture = "aarch64",
+                           },
+            .rootfs =
+                    {
+                           .output = "./rootfs",
+                           },
+            .binaries =
+                    {
+                           .paths = &binary,
+                           .count = 1,
+                           },
+    };
 
     assert(forge_config_validate(&config) != 0);
 
@@ -507,7 +506,6 @@ static void test_non_executable_binary(void)
     };
 
     assert(forge_config_validate(&config) != 0);
-
     assert(remove(path) == 0);
 
     test_pass();
@@ -572,12 +570,6 @@ int main(void)
 
     puts("");
 
-    test_valid_config();
-    test_unsupported_distribution();
-    test_unsupported_architecture();
-
-    puts("");
-
     test_existing_binary();
     test_missing_binary();
     test_non_regular_binary();
@@ -585,14 +577,5 @@ int main(void)
 
     puts("");
 
-    printf("%u/%u tests passed\n", tests_passed, tests_run);
-
-    if (tests_passed != tests_run) {
-        puts("FAILED");
-        return EXIT_FAILURE;
-    }
-
-    puts("PASSED");
-
-    return EXIT_SUCCESS;
+    return test_run();
 }

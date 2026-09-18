@@ -1,18 +1,29 @@
-CC      := cc
-CFLAGS  := -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -Werror -O2
+CC       := cc
+CFLAGS   := -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -Werror -O2
 CPPFLAGS := -Iinclude
 
 TARGET := forge
 
 SRC := \
 	src/main.c \
-	src/config.c
+	src/config.c \
+	src/alpine.c
 
-TEST_TARGET := test-config
+TEST_CONFIG_TARGET := tests/test-config
 
-TEST_SRC := \
+TEST_CONFIG_SRC := \
 	tests/config.c \
+	tests/utils.c \
 	src/config.c
+
+TEST_ALPINE_TARGET := tests/test-alpine
+
+TEST_ALPINE_SRC := \
+	tests/alpine.c \
+	tests/utils.c \
+	src/alpine.c
+
+ROOTFS := rootfs
 
 .PHONY: all clean test
 
@@ -21,11 +32,15 @@ all: $(TARGET)
 $(TARGET): $(SRC)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(SRC)
 
-$(TEST_TARGET): $(TEST_SRC)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_SRC)
+$(TEST_CONFIG_TARGET): $(TEST_CONFIG_SRC)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_CONFIG_SRC)
 
-test: $(TEST_TARGET)
-	./$(TEST_TARGET)
+$(TEST_ALPINE_TARGET): $(TEST_ALPINE_SRC)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_ALPINE_SRC)
+
+test: $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET)
+	./$(TEST_CONFIG_TARGET)
+	./$(TEST_ALPINE_TARGET)
 
 clean:
-	rm -f $(TARGET) $(TEST_TARGET)
+	rm -dfr $(TARGET) $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET) $(ROOTFS)
