@@ -1,4 +1,4 @@
-#include "rootfs.h"
+#include <rootfs.h>
 
 #include "utils.h"
 
@@ -152,8 +152,9 @@ static void test_copy_symlink(void)
 
     struct forge_rootfs rootfs;
     struct stat         destination_status;
+    struct stat         target_status;
 
-    test_begin("copy symlink into rootfs");
+    test_begin("copy symlink and target into rootfs");
 
     remove_rootfs(output);
     unlink(source);
@@ -186,9 +187,116 @@ static void test_copy_symlink(void)
 
     assert(strcmp(buffer, target) == 0);
 
+    assert(stat("tests/rootfs-copy/tmp/forge-rootfs-target", &target_status) ==
+           0);
+    assert(S_ISREG(target_status.st_mode));
+
     forge_rootfs_free(&rootfs);
 
     unlink(source);
+    unlink(target);
+    remove_rootfs(output);
+
+    test_pass();
+}
+
+static void test_copy_relative_symlink(void)
+{
+    const char *source = "/tmp/forge-rootfs-relative-link";
+    const char *target = "/tmp/forge-rootfs-relative-target";
+    const char *output = "tests/rootfs-copy";
+
+    struct forge_rootfs rootfs;
+    struct stat         status;
+
+    test_begin("copy relative symlink and target");
+
+    remove_rootfs(output);
+    unlink(source);
+    unlink(target);
+
+    int target_fd = creat(target, 0644);
+
+    assert(target_fd >= 0);
+    assert(close(target_fd) == 0);
+    assert(symlink("forge-rootfs-relative-target", source) == 0);
+
+    assert(forge_rootfs_init(&rootfs, output) == 0);
+    assert(forge_rootfs_copy(&rootfs, source) == 0);
+
+    assert(lstat("tests/rootfs-copy/tmp/forge-rootfs-relative-link", &status) ==
+           0);
+    assert(S_ISLNK(status.st_mode));
+
+    char buffer[256];
+
+    ssize_t length =
+            readlink("tests/rootfs-copy/tmp/forge-rootfs-relative-link", buffer,
+                     sizeof(buffer) - 1);
+
+    assert(length >= 0);
+
+    buffer[length] = '\0';
+
+    assert(strcmp(buffer, "forge-rootfs-relative-target") == 0);
+
+    assert(stat("tests/rootfs-copy/tmp/forge-rootfs-relative-target",
+                &status) == 0);
+    assert(S_ISREG(status.st_mode));
+
+    forge_rootfs_free(&rootfs);
+
+    unlink(source);
+    unlink(target);
+    remove_rootfs(output);
+
+    test_pass();
+}
+
+static void test_copy_symlink_chain(void)
+{
+    const char *first  = "/tmp/forge-rootfs-link-first";
+    const char *second = "/tmp/forge-rootfs-link-second";
+    const char *target = "/tmp/forge-rootfs-link-target";
+    const char *output = "tests/rootfs-copy";
+
+    struct forge_rootfs rootfs;
+    struct stat         status;
+
+    test_begin("copy symlink chain and final target");
+
+    remove_rootfs(output);
+    unlink(first);
+    unlink(second);
+    unlink(target);
+
+    int target_fd = creat(target, 0644);
+
+    assert(target_fd >= 0);
+    assert(close(target_fd) == 0);
+
+    assert(symlink(target, second) == 0);
+    assert(symlink(second, first) == 0);
+
+    assert(forge_rootfs_init(&rootfs, output) == 0);
+    assert(forge_rootfs_copy(&rootfs, first) == 0);
+
+    assert(lstat("tests/rootfs-copy/tmp/forge-rootfs-link-first", &status) ==
+           0);
+    assert(S_ISLNK(status.st_mode));
+
+    assert(lstat("tests/rootfs-copy/tmp/forge-rootfs-link-second", &status) ==
+           0);
+    assert(S_ISLNK(status.st_mode));
+
+    assert(stat("tests/rootfs-copy/tmp/forge-rootfs-link-target", &status) ==
+           0);
+    assert(S_ISREG(status.st_mode));
+
+    forge_rootfs_free(&rootfs);
+
+    unlink(first);
+    unlink(second);
     unlink(target);
     remove_rootfs(output);
 
@@ -328,6 +436,8 @@ int main(void)
     test_copy_binary();
     test_preserve_permissions();
     test_copy_symlink();
+    test_copy_relative_symlink();
+    test_copy_symlink_chain();
     test_copy_parent_directories();
     test_copy_missing_source();
     test_copy_non_regular();
