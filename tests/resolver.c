@@ -5,12 +5,15 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 static const char *rpath_fixture   = "tests/fixtures/bin/forge-rpath";
 
 static const char *runpath_fixture = "tests/fixtures/bin/forge-runpath";
 
 static const char *missing_fixture = "tests/fixtures/bin/forge-missing";
+
+static const char *script_fixture  = "tests/test-script-fixture";
 
 static void test_resolve_dependencies(void)
 {
@@ -100,6 +103,44 @@ static void test_recursive_dependencies(void)
     }
 
     assert(has_children);
+
+    forge_dependency_tree_free(&tree);
+
+    test_pass();
+}
+
+static void test_resolve_script(void)
+{
+    test_begin("resolve script interpreter");
+
+    FILE *file = fopen(script_fixture, "wb");
+
+    assert(file != NULL);
+    assert(fputs("#!/bin/sh\nprintf 'hello\\n'\n", file) >= 0);
+    assert(fclose(file) == 0);
+
+    struct forge_dependency_tree tree;
+
+    assert(forge_resolve_dependencies(script_fixture, &tree) == 0);
+
+    assert(tree.count > 0);
+    assert(tree.interpreter != NULL);
+
+    int found_interpreter = 0;
+
+    for (size_t i = 0; i < tree.count; ++i) {
+        if (strcmp(tree.dependencies[i]->path, "/bin/sh") == 0) {
+            found_interpreter = 1;
+            break;
+        }
+    }
+
+    assert(found_interpreter);
+
+    for (size_t i = 0; i < tree.count; ++i)
+        assert(strcmp(tree.dependencies[i]->path, tree.interpreter) != 0);
+
+    assert(unlink(script_fixture) == 0);
 
     forge_dependency_tree_free(&tree);
 
@@ -209,6 +250,7 @@ int main(void)
     test_interpreter_not_dependency();
     test_dependencies_have_paths();
     test_recursive_dependencies();
+    test_resolve_script();
     test_rpath_resolution();
     test_runpath_not_transitive();
     test_missing_dependency();

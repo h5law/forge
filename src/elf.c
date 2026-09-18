@@ -7,6 +7,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int supported_machine(unsigned int machine)
+{
+    switch (machine) {
+    case EM_X86_64:
+    case EM_AARCH64:
+    case EM_RISCV:
+        return 1;
+
+    default:
+        return 0;
+    }
+}
+
 static int forge_elf_parse_internal(const char *path, struct forge_elf *elf,
                                     int verbose)
 {
@@ -57,7 +70,7 @@ static int forge_elf_parse_internal(const char *path, struct forge_elf *elf,
         return -1;
     }
 
-    if (header.e_machine != EM_X86_64) {
+    if (!supported_machine(header.e_machine)) {
         if (verbose)
             fprintf(stderr, "%s: unsupported ELF architecture: %u\n", path,
                     header.e_machine);

@@ -1,4 +1,4 @@
-#include "rootfs.h"
+#include <rootfs.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -8,6 +8,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#define FORGE_ROOTFS_SYMLINK_MAX_DEPTH 40
 
 static int create_directory(const char *path, mode_t mode)
 {
@@ -172,33 +174,39 @@ static int copy_file(const char *source, const char *destination, mode_t mode)
     return result;
 }
 
-static int copy_symlink(const char *source, const char *destination)
+static int read_symlink_target(const char *source, char **target)
 {
     size_t capacity = 256;
-    char  *target   = NULL;
+
+    if (target == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    *target = NULL;
 
     for (;;) {
-        target = malloc(capacity);
+        char *buffer = malloc(capacity);
 
-        if (target == NULL)
+        if (buffer == NULL)
             return -1;
 
-        ssize_t length = readlink(source, target, capacity);
+        ssize_t length = readlink(source, buffer, capacity);
 
         if (length < 0) {
             fprintf(stderr, "failed to read symlink %s: %s\n", source,
                     strerror(errno));
-            free(target);
+            free(buffer);
             return -1;
         }
 
         if (( size_t )length < capacity) {
-            target[length] = '\0';
-            break;
+            buffer[length] = '\0';
+            *target        = buffer;
+            return 0;
         }
 
-        free(target);
-        target = NULL;
+        free(buffer);
 
         if (capacity > SIZE_MAX / 2) {
             errno = ENAMETOOLONG;
@@ -207,6 +215,68 @@ static int copy_symlink(const char *source, const char *destination)
 
         capacity *= 2;
     }
+}
+
+static char *symlink_target_path(const char *source, const char *target)
+{
+    if (source == NULL || target == NULL) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    /*
+     * Absolute symlink targets are already expressed as paths in the
+     * root filesystem.
+     */
+    if (target[0] == '/')
+        return strdup(target);
+
+    /*
+     * Relative symlink targets are interpreted relative to the directory
+     * containing the symlink.
+     */
+    const char *slash = strrchr(source, '/');
+
+    if (slash == NULL)
+        return strdup(target);
+
+    size_t directory_length = ( size_t )(slash - source);
+
+    if (directory_length > SIZE_MAX - strlen(target) - 2) {
+        errno = ENAMETOOLONG;
+        return NULL;
+    }
+
+    char *path = malloc(directory_length + strlen(target) + 2);
+
+    if (path == NULL)
+        return NULL;
+
+    memcpy(path, source, directory_length);
+    path[directory_length] = '/';
+    strcpy(path + directory_length + 1, target);
+
+    return path;
+}
+
+static int copy_entry(const char *source, const char *destination,
+                      unsigned int depth);
+
+static int copy_symlink(const char *source, const char *destination,
+                        unsigned int depth)
+{
+    if (depth >= FORGE_ROOTFS_SYMLINK_MAX_DEPTH) {
+        errno = ELOOP;
+
+        fprintf(stderr, "too many symlink levels while copying %s\n", source);
+
+        return -1;
+    }
+
+    char *target = NULL;
+
+    if (read_symlink_target(source, &target) < 0)
+        return -1;
 
     if (symlink(target, destination) < 0) {
         fprintf(stderr, "failed to create symlink %s -> %s: %s\n", destination,
@@ -215,9 +285,153 @@ static int copy_symlink(const char *source, const char *destination)
         return -1;
     }
 
+    char *target_path = symlink_target_path(source, target);
+
+    if (target_path == NULL) {
+        unlink(destination);
+        free(target);
+        return -1;
+    }
+
+    /*
+     * The target must exist in the generated rootfs at the same logical
+     * path referenced by the symlink. For example:
+     *
+     *     /bin/sh -> bash
+     *
+     * requires:
+     *
+     *     /bin/bash
+     *
+     * to exist in the rootfs.
+     */
+    struct stat target_status;
+
+    if (lstat(target_path, &target_status) < 0) {
+        fprintf(stderr, "failed to stat symlink target %s: %s\n", target_path,
+                strerror(errno));
+        unlink(destination);
+        free(target_path);
+        free(target);
+        return -1;
+    }
+
+    char *target_destination = NULL;
+
+    /*
+     * forge_rootfs_path() is not used here because target_path is already
+     * an absolute path in the source filesystem namespace.
+     */
+    size_t rootfs_length     = 0;
+
+    char *destination_root   = strdup(destination);
+
+    if (destination_root == NULL) {
+        unlink(destination);
+        free(target_path);
+        free(target);
+        return -1;
+    }
+
+    char *destination_slash = strrchr(destination_root, '/');
+
+    if (destination_slash == NULL) {
+        free(destination_root);
+        unlink(destination);
+        free(target_path);
+        free(target);
+        errno = EINVAL;
+        return -1;
+    }
+
+    /*
+     * Find the rootfs prefix by using the destination path and source
+     * path lengths. The destination has the form:
+     *
+     *     rootfs + source
+     */
+    rootfs_length = strlen(destination) - strlen(source);
+
+    free(destination_root);
+
+    if (rootfs_length == 0) {
+        unlink(destination);
+        free(target_path);
+        free(target);
+        errno = EINVAL;
+        return -1;
+    }
+
+    size_t target_length = strlen(target_path);
+
+    if (rootfs_length > SIZE_MAX - target_length - 1) {
+        unlink(destination);
+        free(target_path);
+        free(target);
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    target_destination = malloc(rootfs_length + target_length + 1);
+
+    if (target_destination == NULL) {
+        unlink(destination);
+        free(target_path);
+        free(target);
+        return -1;
+    }
+
+    memcpy(target_destination, destination, rootfs_length);
+    memcpy(target_destination + rootfs_length, target_path, target_length);
+    target_destination[rootfs_length + target_length] = '\0';
+
+    int result = copy_entry(target_path, target_destination, depth + 1);
+
+    free(target_destination);
+    free(target_path);
     free(target);
 
-    return 0;
+    if (result < 0)
+        unlink(destination);
+
+    return result;
+}
+
+static int copy_entry(const char *source, const char *destination,
+                      unsigned int depth)
+{
+    struct stat status;
+
+    if (lstat(source, &status) < 0) {
+        fprintf(stderr, "failed to stat %s: %s\n", source, strerror(errno));
+        return -1;
+    }
+
+    if (!S_ISREG(status.st_mode) && !S_ISLNK(status.st_mode)) {
+        fprintf(stderr, "source is not a regular file or symlink: %s\n",
+                source);
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (create_parent_directories(destination) < 0) {
+        fprintf(stderr, "failed to create parent directories for %s: %s\n",
+                destination, strerror(errno));
+        return -1;
+    }
+
+    if (unlink(destination) < 0 && errno != ENOENT) {
+        fprintf(stderr, "failed to remove existing %s: %s\n", destination,
+                strerror(errno));
+        return -1;
+    }
+
+    printf("Copying %s -> %s\n", source, destination);
+
+    if (S_ISLNK(status.st_mode))
+        return copy_symlink(source, destination, depth);
+
+    return copy_file(source, destination, status.st_mode & 07777);
 }
 
 int forge_rootfs_init(struct forge_rootfs *rootfs, const char *path)
@@ -280,47 +494,12 @@ int forge_rootfs_copy(struct forge_rootfs *rootfs, const char *source)
         return -1;
     }
 
-    struct stat status;
-
-    if (lstat(source, &status) < 0) {
-        fprintf(stderr, "failed to stat %s: %s\n", source, strerror(errno));
-        return -1;
-    }
-
-    if (!S_ISREG(status.st_mode) && !S_ISLNK(status.st_mode)) {
-        fprintf(stderr, "source is not a regular file or symlink: %s\n",
-                source);
-        errno = EINVAL;
-        return -1;
-    }
-
     char *destination = NULL;
 
     if (forge_rootfs_path(rootfs, source, &destination) < 0)
         return -1;
 
-    if (create_parent_directories(destination) < 0) {
-        fprintf(stderr, "failed to create parent directories for %s: %s\n",
-                destination, strerror(errno));
-        free(destination);
-        return -1;
-    }
-
-    if (unlink(destination) < 0 && errno != ENOENT) {
-        fprintf(stderr, "failed to remove existing %s: %s\n", destination,
-                strerror(errno));
-        free(destination);
-        return -1;
-    }
-
-    printf("Copying %s -> %s\n", source, destination);
-
-    int result;
-
-    if (S_ISLNK(status.st_mode))
-        result = copy_symlink(source, destination);
-    else
-        result = copy_file(source, destination, status.st_mode & 07777);
+    int result = copy_entry(source, destination, 0);
 
     free(destination);
 
