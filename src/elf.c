@@ -20,6 +20,30 @@ static int read_header(FILE *file, Elf64_Ehdr *header)
     return 0;
 }
 
+static int validate_header(const Elf64_Ehdr *header)
+{
+    if (header->e_version != EV_CURRENT) {
+        fprintf(stderr, "unsupported ELF version: %u\n", header->e_version);
+
+        return -1;
+    }
+
+    if (header->e_ehsize != sizeof(Elf64_Ehdr)) {
+        fprintf(stderr, "unsupported ELF header size: %u\n", header->e_ehsize);
+
+        return -1;
+    }
+
+    if (header->e_phnum != 0 && header->e_phentsize != sizeof(Elf64_Phdr)) {
+        fprintf(stderr, "unsupported ELF program header size: %u\n",
+                header->e_phentsize);
+
+        return -1;
+    }
+
+    return 0;
+}
+
 static int read_program_headers(FILE *file, const Elf64_Ehdr *header,
                                 Elf64_Phdr **program_headers)
 {
@@ -43,7 +67,8 @@ static int read_program_headers(FILE *file, const Elf64_Ehdr *header,
         return -1;
     }
 
-    if (fseek(file, ( long )header->e_phoff, SEEK_SET) < 0) {
+    if (( Elf64_Off )( long )header->e_phoff != header->e_phoff ||
+        fseek(file, ( long )header->e_phoff, SEEK_SET) < 0) {
         fprintf(stderr, "failed to seek to program headers: %s\n",
                 strerror(errno));
 
@@ -131,7 +156,6 @@ static int extract_interpreter(FILE *file, const Elf64_Phdr *program_headers,
         }
 
         interpreter[size] = '\0';
-
         elf->interpreter  = interpreter;
 
         return 0;
@@ -158,10 +182,10 @@ static int virtual_to_file_offset(const Elf64_Phdr *program_headers,
         if (relative >= header->p_filesz)
             continue;
 
-        *offset = header->p_offset + relative;
-
-        if (*offset < header->p_offset)
+        if (relative > UINT64_MAX - header->p_offset)
             return -1;
+
+        *offset = header->p_offset + relative;
 
         return 0;
     }
@@ -171,6 +195,12 @@ static int virtual_to_file_offset(const Elf64_Phdr *program_headers,
 
 static int append_needed(struct forge_elf *elf, const char *name)
 {
+    if (elf->needed_count == SIZE_MAX / sizeof(*elf->needed) - 1) {
+        fprintf(stderr, "too many ELF dependencies\n");
+
+        return -1;
+    }
+
     char **needed =
             realloc(elf->needed, (elf->needed_count + 1) * sizeof(*needed));
 
@@ -220,20 +250,31 @@ static int extract_needed(FILE *file, const Elf64_Phdr *program_headers,
     size_t dynamic_count =
             ( size_t )(dynamic_header->p_filesz / sizeof(Elf64_Dyn));
 
+    if (dynamic_count > SIZE_MAX / sizeof(Elf64_Dyn)) {
+        fprintf(stderr, "ELF dynamic section is too large\n");
+
+        return -1;
+    }
+
+    Elf64_Dyn *dynamic = NULL;
+
+    if (dynamic_count != 0) {
+        dynamic = malloc(dynamic_count * sizeof(*dynamic));
+
+        if (dynamic == NULL) {
+            fprintf(stderr, "failed to allocate ELF dynamic section\n");
+
+            return -1;
+        }
+    }
+
     if (( Elf64_Off )( long )dynamic_header->p_offset !=
                 dynamic_header->p_offset ||
         fseek(file, ( long )dynamic_header->p_offset, SEEK_SET) < 0) {
         fprintf(stderr, "failed to seek to ELF dynamic section: %s\n",
                 strerror(errno));
 
-        return -1;
-    }
-
-    Elf64_Dyn *dynamic = malloc(dynamic_count * sizeof(*dynamic));
-
-    if (dynamic == NULL && dynamic_count != 0) {
-        fprintf(stderr, "failed to allocate ELF dynamic section\n");
-
+        free(dynamic);
         return -1;
     }
 
@@ -251,23 +292,15 @@ static int extract_needed(FILE *file, const Elf64_Phdr *program_headers,
     int         have_string_table_size = 0;
 
     for (size_t i = 0; i < dynamic_count; ++i) {
-        switch (dynamic[i].d_tag) {
-        case DT_STRTAB:
+        if (dynamic[i].d_tag == DT_NULL)
+            break;
+
+        if (dynamic[i].d_tag == DT_STRTAB) {
             string_table_address = dynamic[i].d_un.d_ptr;
             have_string_table    = 1;
-            break;
-
-        case DT_STRSZ:
+        } else if (dynamic[i].d_tag == DT_STRSZ) {
             string_table_size      = dynamic[i].d_un.d_val;
             have_string_table_size = 1;
-            break;
-
-        case DT_NEEDED:
-            break;
-
-        case DT_NULL:
-            i = dynamic_count;
-            break;
         }
     }
 
@@ -307,25 +340,31 @@ static int extract_needed(FILE *file, const Elf64_Phdr *program_headers,
 
     size_t string_table_length = ( size_t )string_table_size;
 
-    char *strings              = malloc(string_table_length);
+    char *strings              = NULL;
 
-    if (strings == NULL && string_table_length != 0) {
-        fprintf(stderr, "failed to allocate ELF string table\n");
+    if (string_table_length != 0) {
+        strings = malloc(string_table_length);
 
-        free(dynamic);
-        return -1;
-    }
+        if (strings == NULL) {
+            fprintf(stderr, "failed to allocate ELF string table\n");
 
-    if (string_table_length != 0 &&
-        fread(strings, string_table_length, 1, file) != 1) {
-        fprintf(stderr, "failed to read ELF string table\n");
+            free(dynamic);
+            return -1;
+        }
 
-        free(strings);
-        free(dynamic);
-        return -1;
+        if (fread(strings, string_table_length, 1, file) != 1) {
+            fprintf(stderr, "failed to read ELF string table\n");
+
+            free(strings);
+            free(dynamic);
+            return -1;
+        }
     }
 
     for (size_t i = 0; i < dynamic_count; ++i) {
+        if (dynamic[i].d_tag == DT_NULL)
+            break;
+
         if (dynamic[i].d_tag != DT_NEEDED)
             continue;
 
@@ -339,7 +378,7 @@ static int extract_needed(FILE *file, const Elf64_Phdr *program_headers,
             return -1;
         }
 
-        const char *name = strings + string_offset;
+        const char *name = strings + ( size_t )string_offset;
 
         size_t remaining = string_table_length - ( size_t )string_offset;
 
@@ -425,6 +464,11 @@ int forge_elf_parse(const char *path, struct forge_elf *elf)
         return -1;
     }
 
+    if (validate_header(&header) < 0) {
+        fclose(file);
+        return -1;
+    }
+
     if (header.e_machine != EM_X86_64) {
         fprintf(stderr, "%s: unsupported ELF architecture: %u\n", path,
                 header.e_machine);
@@ -439,6 +483,9 @@ int forge_elf_parse(const char *path, struct forge_elf *elf)
         fclose(file);
         return -1;
     }
+
+    elf->machine   = header.e_machine;
+    elf->elf_class = header.e_ident[EI_CLASS];
 
     elf->dynamic =
             has_program_header(program_headers, header.e_phnum, PT_DYNAMIC);
@@ -457,9 +504,6 @@ int forge_elf_parse(const char *path, struct forge_elf *elf)
         fclose(file);
         return -1;
     }
-
-    elf->machine   = header.e_machine;
-    elf->elf_class = header.e_ident[EI_CLASS];
 
     free(program_headers);
 
