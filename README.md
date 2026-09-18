@@ -502,9 +502,9 @@ forge/
 
 ## Roadmap
 
-* [ ] Define configuration format
+* [x] Define configuration format
 * [ ] Download and extract Alpine minirootfs
-* [ ] Validate requested host binaries
+* [x] Validate requested host binaries
 * [ ] Implement ELF parser
 * [ ] Extract `PT_INTERP`
 * [ ] Extract `DT_NEEDED`
