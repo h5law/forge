@@ -1,0 +1,10 @@
+# Binary
+forge
+
+# Outputs
+*/*.o
+compile_commands.json
+
+# rootfs
+rootfs/*
+rootfs/
