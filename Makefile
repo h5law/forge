@@ -7,6 +7,7 @@ FORGE := forge
 TEST_CONFIG := tests/test-config
 TEST_ALPINE := tests/test-alpine
 TEST_ELF := tests/test-elf
+TEST_FILE := tests/test-file
 TEST_RESOLVER := tests/test-resolver
 TEST_ROOTFS := tests/test-rootfs-test
 
@@ -32,6 +33,7 @@ TESTS := \
 	$(TEST_CONFIG) \
 	$(TEST_ALPINE) \
 	$(TEST_ELF) \
+	$(TEST_FILE) \
 	$(TEST_RESOLVER) \
 	$(TEST_ROOTFS)
 
@@ -45,11 +47,13 @@ $(FORGE): \
 	src/config.c \
 	src/alpine.c \
 	src/elf.c \
+	src/file.c \
 	src/resolver.c \
 	src/rootfs.c \
 	include/config.h \
 	include/alpine.h \
 	include/elf_parser.h \
+	include/file.h \
 	include/resolver.h \
 	include/rootfs.h
 	$(CC) $(CFLAGS) -o $@ \
@@ -57,6 +61,7 @@ $(FORGE): \
 		src/config.c \
 		src/alpine.c \
 		src/elf.c \
+		src/file.c \
 		src/resolver.c \
 		src/rootfs.c
 
@@ -66,6 +71,7 @@ test: $(TESTS)
 	./$(TEST_CONFIG)
 	./$(TEST_ALPINE)
 	./$(TEST_ELF)
+	./$(TEST_FILE)
 	./$(TEST_RESOLVER)
 	./$(TEST_ROOTFS)
 
@@ -91,19 +97,29 @@ $(TEST_ELF): tests/elf.c tests/utils.c src/elf.c include/elf_parser.h
 		src/elf.c
 
 
+$(TEST_FILE): tests/file.c tests/utils.c src/file.c include/file.h
+	$(CC) $(CFLAGS) -o $@ \
+		tests/file.c \
+		tests/utils.c \
+		src/file.c
+
+
 $(TEST_RESOLVER): \
 	tests/resolver.c \
 	tests/utils.c \
 	src/resolver.c \
 	src/elf.c \
+	src/file.c \
 	include/resolver.h \
 	include/elf_parser.h \
+	include/file.h \
 	$(FIXTURES)
 	$(CC) $(CFLAGS) -o $@ \
 		tests/resolver.c \
 		tests/utils.c \
 		src/resolver.c \
-		src/elf.c
+		src/elf.c \
+		src/file.c
 
 
 $(TEST_ROOTFS): \
@@ -195,6 +211,7 @@ clean:
 		$(TEST_CONFIG) \
 		$(TEST_ALPINE) \
 		$(TEST_ELF) \
+		$(TEST_FILE) \
 		$(TEST_RESOLVER) \
 		$(TEST_ROOTFS) \
 		tests/test-rootfs \

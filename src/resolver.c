@@ -1,5 +1,6 @@
 #include <resolver.h>
 #include <elf_parser.h>
+#include <file.h>
 
 #include <errno.h>
 #include <stdint.h>
@@ -242,6 +243,7 @@ static char *resolve_in_search_path(const char *search_path, const char *origin,
 static char *resolve_library(const char *name, const char *requester,
                              const char *rpath, const char *runpath,
                              const char  *inherited_rpath,
+                             const char  *inherited_rpath_origin,
                              unsigned int elf_class, unsigned int machine)
 {
     if (name == NULL || name[0] == '\0')
@@ -277,10 +279,14 @@ static char *resolve_library(const char *name, const char *requester,
     /*
      * RPATH is transitive, so an ancestor's RPATH remains available
      * when resolving descendants.
+     *
+     * The $ORIGIN in an inherited RPATH refers to the object which
+     * originally supplied that RPATH, not the current requester.
      */
-    if (inherited_rpath != NULL) {
-        char *resolved = resolve_in_search_path(inherited_rpath, origin, name,
-                                                elf_class, machine);
+    if (inherited_rpath != NULL && inherited_rpath_origin != NULL) {
+        char *resolved =
+                resolve_in_search_path(inherited_rpath, inherited_rpath_origin,
+                                       name, elf_class, machine);
 
         if (resolved != NULL) {
             free(origin);
@@ -419,8 +425,9 @@ tree_find_dependency(const struct forge_dependency_tree *tree, const char *path)
 
 static int resolve_dependency(struct forge_dependency *dependency,
                               unsigned int elf_class, unsigned int machine,
-                              const char                   *interpreter,
-                              const char                   *inherited_rpath,
+                              const char *interpreter,
+                              const char *inherited_rpath,
+                              const char *inherited_rpath_origin,
                               struct forge_dependency_tree *tree)
 {
     if (dependency->state == FORGE_DEPENDENCY_RESOLVED)
@@ -452,22 +459,43 @@ static int resolve_dependency(struct forge_dependency *dependency,
         return -1;
     }
 
-    const char *next_inherited_rpath = inherited_rpath;
+    /*
+     * inherited_rpath_origin is borrowed from the caller.
+     *
+     * If this object introduces a new inherited RPATH, allocate a new
+     * origin for it and own that allocation locally.
+     */
+    const char *next_inherited_rpath        = inherited_rpath;
+    const char *next_inherited_rpath_origin = inherited_rpath_origin;
 
-    if (elf.runpath == NULL && elf.rpath != NULL)
-        next_inherited_rpath = elf.rpath;
+    char *owned_rpath_origin                = NULL;
+
+    if (elf.runpath == NULL && elf.rpath != NULL) {
+        owned_rpath_origin = path_directory(dependency->path);
+
+        if (owned_rpath_origin == NULL) {
+            forge_elf_free(&elf);
+            dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
+
+            return -1;
+        }
+
+        next_inherited_rpath        = elf.rpath;
+        next_inherited_rpath_origin = owned_rpath_origin;
+    }
 
     for (size_t i = 0; i < elf.needed_count; ++i) {
         const char *name = elf.needed[i];
 
-        char *resolved =
-                resolve_library(name, dependency->path, elf.rpath, elf.runpath,
-                                inherited_rpath, elf_class, machine);
+        char *resolved   = resolve_library(
+                name, dependency->path, elf.rpath, elf.runpath, inherited_rpath,
+                inherited_rpath_origin, elf_class, machine);
 
         if (resolved == NULL) {
             fprintf(stderr, "failed to resolve dependency '%s' of '%s'\n", name,
                     dependency->path);
 
+            free(owned_rpath_origin);
             forge_elf_free(&elf);
             dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
 
@@ -489,6 +517,7 @@ static int resolve_dependency(struct forge_dependency *dependency,
 
             if (child == NULL) {
                 free(resolved);
+                free(owned_rpath_origin);
                 forge_elf_free(&elf);
                 dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
 
@@ -498,6 +527,7 @@ static int resolve_dependency(struct forge_dependency *dependency,
             if (tree_add_dependency(tree, child) < 0) {
                 dependency_free(child);
                 free(resolved);
+                free(owned_rpath_origin);
                 forge_elf_free(&elf);
                 dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
 
@@ -508,6 +538,7 @@ static int resolve_dependency(struct forge_dependency *dependency,
         free(resolved);
 
         if (dependency_add_child(dependency, child) < 0) {
+            free(owned_rpath_origin);
             forge_elf_free(&elf);
             dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
 
@@ -515,7 +546,9 @@ static int resolve_dependency(struct forge_dependency *dependency,
         }
 
         if (resolve_dependency(child, elf_class, machine, interpreter,
-                               next_inherited_rpath, tree) < 0) {
+                               next_inherited_rpath,
+                               next_inherited_rpath_origin, tree) < 0) {
+            free(owned_rpath_origin);
             forge_elf_free(&elf);
             dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
 
@@ -523,6 +556,7 @@ static int resolve_dependency(struct forge_dependency *dependency,
         }
     }
 
+    free(owned_rpath_origin);
     forge_elf_free(&elf);
 
     dependency->state = FORGE_DEPENDENCY_RESOLVED;
@@ -577,6 +611,14 @@ int forge_resolve_dependencies(const char                   *binary,
 
     memset(tree, 0, sizeof(*tree));
 
+    int is_script = forge_file_is_script(binary);
+
+    if (is_script < 0)
+        return -1;
+
+    if (is_script)
+        return 0;
+
     struct forge_elf elf;
 
     if (forge_elf_parse(binary, &elf) < 0)
@@ -597,21 +639,32 @@ int forge_resolve_dependencies(const char                   *binary,
         return -1;
     }
 
-    const char *inherited_rpath = NULL;
+    const char *inherited_rpath        = NULL;
+    char       *inherited_rpath_origin = NULL;
 
-    if (elf.runpath == NULL)
-        inherited_rpath = elf.rpath;
+    if (elf.runpath == NULL && elf.rpath != NULL) {
+        inherited_rpath        = elf.rpath;
+        inherited_rpath_origin = path_directory(binary);
+
+        if (inherited_rpath_origin == NULL) {
+            forge_elf_free(&elf);
+            forge_dependency_tree_free(tree);
+
+            return -1;
+        }
+    }
 
     for (size_t i = 0; i < elf.needed_count; ++i) {
         const char *name = elf.needed[i];
 
         char *resolved   = resolve_library(name, binary, elf.rpath, elf.runpath,
-                                           NULL, elf_class, machine);
+                                           NULL, NULL, elf_class, machine);
 
         if (resolved == NULL) {
             fprintf(stderr, "failed to resolve dependency '%s' of '%s'\n", name,
                     binary);
 
+            free(inherited_rpath_origin);
             forge_elf_free(&elf);
             forge_dependency_tree_free(tree);
 
@@ -635,6 +688,7 @@ int forge_resolve_dependencies(const char                   *binary,
 
             if (dependency == NULL) {
                 free(resolved);
+                free(inherited_rpath_origin);
                 forge_elf_free(&elf);
                 forge_dependency_tree_free(tree);
 
@@ -644,6 +698,7 @@ int forge_resolve_dependencies(const char                   *binary,
             if (tree_add_dependency(tree, dependency) < 0) {
                 dependency_free(dependency);
                 free(resolved);
+                free(inherited_rpath_origin);
                 forge_elf_free(&elf);
                 forge_dependency_tree_free(tree);
 
@@ -654,7 +709,9 @@ int forge_resolve_dependencies(const char                   *binary,
         free(resolved);
 
         if (resolve_dependency(dependency, elf_class, machine,
-                               tree->interpreter, inherited_rpath, tree) < 0) {
+                               tree->interpreter, inherited_rpath,
+                               inherited_rpath_origin, tree) < 0) {
+            free(inherited_rpath_origin);
             forge_elf_free(&elf);
             forge_dependency_tree_free(tree);
 
@@ -662,6 +719,7 @@ int forge_resolve_dependencies(const char                   *binary,
         }
     }
 
+    free(inherited_rpath_origin);
     forge_elf_free(&elf);
 
     return 0;

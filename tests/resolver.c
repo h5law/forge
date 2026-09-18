@@ -5,12 +5,15 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 static const char *rpath_fixture   = "tests/fixtures/bin/forge-rpath";
 
 static const char *runpath_fixture = "tests/fixtures/bin/forge-runpath";
 
 static const char *missing_fixture = "tests/fixtures/bin/forge-missing";
+
+static const char *script_fixture  = "tests/test-script-fixture";
 
 static void test_resolve_dependencies(void)
 {
@@ -135,6 +138,30 @@ static void test_rpath_resolution(void)
     test_pass();
 }
 
+static void test_resolve_script(void)
+{
+    test_begin("accept script without ELF dependencies");
+
+    FILE *file = fopen(script_fixture, "wb");
+
+    assert(file != NULL);
+    assert(fputs("#!/bin/sh\nprintf 'hello\\n'\n", file) >= 0);
+    assert(fclose(file) == 0);
+
+    struct forge_dependency_tree tree;
+
+    assert(forge_resolve_dependencies(script_fixture, &tree) == 0);
+    assert(tree.interpreter == NULL);
+    assert(tree.dependencies == NULL);
+    assert(tree.count == 0);
+
+    assert(unlink(script_fixture) == 0);
+
+    forge_dependency_tree_free(&tree);
+
+    test_pass();
+}
+
 static void test_runpath_not_transitive(void)
 {
     test_begin("do not inherit RUNPATH");
@@ -209,6 +236,7 @@ int main(void)
     test_interpreter_not_dependency();
     test_dependencies_have_paths();
     test_recursive_dependencies();
+    test_resolve_script();
     test_rpath_resolution();
     test_runpath_not_transitive();
     test_missing_dependency();
