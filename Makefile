@@ -7,7 +7,8 @@ TARGET := forge
 SRC := \
 	src/main.c \
 	src/config.c \
-	src/alpine.c
+	src/alpine.c \
+	src/elf.c
 
 TEST_CONFIG_TARGET := tests/test-config
 
