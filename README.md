@@ -508,12 +508,13 @@ forge/
 
 ### ELF Analysis
 
-- [ ] Implement ELF parser
-- [ ] Validate ELF architecture
-- [ ] Extract `PT_INTERP`
-- [ ] Extract `DT_NEEDED`
-- [ ] Detect static binaries
+- [x] Implement ELF parser
+- [x] Validate ELF architecture
+- [x] Extract `PT_INTERP`
+- [x] Extract `DT_NEEDED`
+- [x] Detect static binaries
 - [ ] Detect incompatible dynamic linkers
+- [x] Add ELF dependency inspection CLI
 
 ### Dependency Resolution
 
