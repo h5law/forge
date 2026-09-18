@@ -10,6 +10,8 @@ static const char *rpath_fixture   = "tests/fixtures/bin/forge-rpath";
 
 static const char *runpath_fixture = "tests/fixtures/bin/forge-runpath";
 
+static const char *missing_fixture = "tests/fixtures/bin/forge-missing";
+
 static void test_resolve_dependencies(void)
 {
     test_begin("resolve recursive dependencies");
@@ -144,6 +146,27 @@ static void test_runpath_not_transitive(void)
     test_pass();
 }
 
+static void test_missing_dependency(void)
+{
+    test_begin("reject missing dependency");
+
+    struct forge_dependency_tree tree;
+
+    assert(forge_resolve_dependencies(missing_fixture, &tree) < 0);
+
+    /*
+     * forge_resolve_dependencies() must clean up the tree before
+     * returning a resolution failure.
+     */
+    assert(tree.interpreter == NULL);
+    assert(tree.dependencies == NULL);
+    assert(tree.count == 0);
+
+    forge_dependency_tree_free(&tree);
+
+    test_pass();
+}
+
 static void test_resolve_missing_binary(void)
 {
     test_begin("reject missing binary");
@@ -188,6 +211,7 @@ int main(void)
     test_recursive_dependencies();
     test_rpath_resolution();
     test_runpath_not_transitive();
+    test_missing_dependency();
     test_resolve_missing_binary();
     test_resolve_null_binary();
     test_resolve_null_tree();

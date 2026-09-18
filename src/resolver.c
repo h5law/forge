@@ -54,14 +54,14 @@ static char *expand_origin(const char *directory, const char *search_path)
     if (directory == NULL || search_path == NULL)
         return NULL;
 
-    const char  *origin        = "$ORIGIN";
-    const size_t origin_length = strlen(origin);
+    const char  *origin           = "$ORIGIN";
+    const size_t origin_length    = strlen(origin);
 
-    size_t directory_length    = strlen(directory);
-    size_t search_length       = strlen(search_path);
+    const size_t directory_length = strlen(directory);
+    const size_t search_length    = strlen(search_path);
 
-    size_t      occurrences    = 0;
-    const char *cursor         = search_path;
+    size_t      occurrences       = 0;
+    const char *cursor            = search_path;
 
     while ((cursor = strstr(cursor, origin)) != NULL) {
         ++occurrences;
@@ -71,26 +71,23 @@ static char *expand_origin(const char *directory, const char *search_path)
     if (occurrences == 0)
         return strdup(search_path);
 
-    size_t replacement_length = directory_length;
+    size_t replacement_length = search_length;
 
-    if (directory_length >= origin_length) {
+    if (directory_length > origin_length) {
         size_t delta = directory_length - origin_length;
 
-        if (occurrences > SIZE_MAX / delta)
+        if (occurrences > (SIZE_MAX - search_length) / delta)
             return NULL;
 
-        replacement_length = search_length + occurrences * delta;
-    } else {
+        replacement_length += occurrences * delta;
+    } else if (directory_length < origin_length) {
         size_t delta = origin_length - directory_length;
 
         if (occurrences > search_length / delta)
             return NULL;
 
-        replacement_length = search_length - occurrences * delta;
+        replacement_length -= occurrences * delta;
     }
-
-    if (replacement_length == SIZE_MAX)
-        return NULL;
 
     char *expanded = malloc(replacement_length + 1);
 
@@ -108,8 +105,10 @@ static char *expand_origin(const char *directory, const char *search_path)
 
         if (match == NULL) {
             size_t remaining = strlen(cursor);
+
             memcpy(output, cursor, remaining);
             output += remaining;
+
             break;
         }
 
@@ -160,11 +159,6 @@ static char *probe_library(const char *path, unsigned int elf_class,
 {
     struct forge_elf elf;
 
-    /*
-     * Candidate probing is deliberately quiet. A file can exist
-     * but be an incompatible ELF, so parser failure is not itself
-     * an error during library lookup.
-     */
     if (forge_elf_parse_quiet(path, &elf) < 0)
         return NULL;
 
@@ -198,8 +192,8 @@ static char *resolve_in_search_path(const char *search_path, const char *origin,
             length = ( size_t )(separator - cursor);
 
         /*
-         * An empty component is deliberately ignored. The resolver
-         * must not implicitly search the current working directory.
+         * Empty components are deliberately ignored. forge must not
+         * implicitly search the current working directory.
          */
         if (length > 0) {
             char *component = malloc(length + 1);
@@ -259,8 +253,8 @@ static char *resolve_library(const char *name, const char *requester,
         return NULL;
 
     /*
-     * RUNPATH takes precedence over RPATH for the object itself.
-     * RUNPATH is not inherited by children.
+     * RUNPATH takes precedence over RPATH for the requesting object.
+     * RUNPATH is not inherited by descendants.
      */
     if (runpath != NULL) {
         char *resolved = resolve_in_search_path(runpath, origin, name,
@@ -281,9 +275,8 @@ static char *resolve_library(const char *name, const char *requester,
     }
 
     /*
-     * RPATH is transitive. A parent RPATH therefore remains available
-     * while resolving descendants unless the descendant's own search
-     * path already found the library.
+     * RPATH is transitive, so an ancestor's RPATH remains available
+     * when resolving descendants.
      */
     if (inherited_rpath != NULL) {
         char *resolved = resolve_in_search_path(inherited_rpath, origin, name,
@@ -434,8 +427,8 @@ static int resolve_dependency(struct forge_dependency *dependency,
         return 0;
 
     /*
-     * Encountering a currently resolving node means we found a cycle.
-     * The edge already exists in the graph, so stop traversing here.
+     * A dependency which is already being resolved forms a cycle.
+     * The edge already exists in the graph, so traversal can stop here.
      */
     if (dependency->state == FORGE_DEPENDENCY_RESOLVING)
         return 0;
@@ -455,13 +448,10 @@ static int resolve_dependency(struct forge_dependency *dependency,
 
         forge_elf_free(&elf);
         dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
+
         return -1;
     }
 
-    /*
-     * If this object has an RPATH and no RUNPATH, its RPATH becomes
-     * available transitively to its descendants.
-     */
     const char *next_inherited_rpath = inherited_rpath;
 
     if (elf.runpath == NULL && elf.rpath != NULL)
@@ -480,13 +470,12 @@ static int resolve_dependency(struct forge_dependency *dependency,
 
             forge_elf_free(&elf);
             dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
+
             return -1;
         }
 
         /*
          * PT_INTERP is represented separately from DT_NEEDED.
-         * Do not add the interpreter to the dependency graph even if
-         * an object happens to list it in DT_NEEDED.
          */
         if (interpreter != NULL && strcmp(resolved, interpreter) == 0) {
             free(resolved);
@@ -502,6 +491,7 @@ static int resolve_dependency(struct forge_dependency *dependency,
                 free(resolved);
                 forge_elf_free(&elf);
                 dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
+
                 return -1;
             }
 
@@ -510,6 +500,7 @@ static int resolve_dependency(struct forge_dependency *dependency,
                 free(resolved);
                 forge_elf_free(&elf);
                 dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
+
                 return -1;
             }
         }
@@ -519,6 +510,7 @@ static int resolve_dependency(struct forge_dependency *dependency,
         if (dependency_add_child(dependency, child) < 0) {
             forge_elf_free(&elf);
             dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
+
             return -1;
         }
 
@@ -526,6 +518,7 @@ static int resolve_dependency(struct forge_dependency *dependency,
                                next_inherited_rpath, tree) < 0) {
             forge_elf_free(&elf);
             dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
+
             return -1;
         }
     }
@@ -548,6 +541,7 @@ static int resolve_interpreter(const struct forge_elf       *elf,
     if (forge_elf_parse(elf->interpreter, &interpreter) < 0) {
         fprintf(stderr, "failed to parse dynamic linker '%s'\n",
                 elf->interpreter);
+
         return -1;
     }
 
@@ -557,6 +551,7 @@ static int resolve_interpreter(const struct forge_elf       *elf,
                 elf->interpreter);
 
         forge_elf_free(&interpreter);
+
         return -1;
     }
 
@@ -567,6 +562,7 @@ static int resolve_interpreter(const struct forge_elf       *elf,
     if (tree->interpreter == NULL) {
         fprintf(stderr, "failed to allocate dynamic linker path: %s\n",
                 strerror(errno));
+
         return -1;
     }
 
@@ -597,8 +593,14 @@ int forge_resolve_dependencies(const char                   *binary,
     if (resolve_interpreter(&elf, tree) < 0) {
         forge_elf_free(&elf);
         forge_dependency_tree_free(tree);
+
         return -1;
     }
+
+    const char *inherited_rpath = NULL;
+
+    if (elf.runpath == NULL)
+        inherited_rpath = elf.rpath;
 
     for (size_t i = 0; i < elf.needed_count; ++i) {
         const char *name = elf.needed[i];
@@ -612,6 +614,7 @@ int forge_resolve_dependencies(const char                   *binary,
 
             forge_elf_free(&elf);
             forge_dependency_tree_free(tree);
+
             return -1;
         }
 
@@ -634,6 +637,7 @@ int forge_resolve_dependencies(const char                   *binary,
                 free(resolved);
                 forge_elf_free(&elf);
                 forge_dependency_tree_free(tree);
+
                 return -1;
             }
 
@@ -642,21 +646,18 @@ int forge_resolve_dependencies(const char                   *binary,
                 free(resolved);
                 forge_elf_free(&elf);
                 forge_dependency_tree_free(tree);
+
                 return -1;
             }
         }
 
         free(resolved);
 
-        const char *inherited_rpath = NULL;
-
-        if (elf.runpath == NULL)
-            inherited_rpath = elf.rpath;
-
         if (resolve_dependency(dependency, elf_class, machine,
                                tree->interpreter, inherited_rpath, tree) < 0) {
             forge_elf_free(&elf);
             forge_dependency_tree_free(tree);
+
             return -1;
         }
     }
