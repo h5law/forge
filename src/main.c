@@ -1,4 +1,4 @@
-#include <forge/config.h>
+#include <config.h>
 
 #include <getopt.h>
 #include <stdio.h>
