@@ -106,12 +106,32 @@ static void test_static(void)
 {
     test_begin("detect static ELF");
 
-    /*
-     * Static ELF fixture will be added once the test suite has
-     * deterministic ELF fixtures.
-     */
+    Elf64_Ehdr header;
 
-    test_skip();
+    memset(&header, 0, sizeof(header));
+
+    memcpy(header.e_ident, ELFMAG, SELFMAG);
+
+    header.e_ident[EI_CLASS]   = ELFCLASS64;
+    header.e_ident[EI_DATA]    = ELFDATA2LSB;
+    header.e_ident[EI_VERSION] = EV_CURRENT;
+
+    header.e_type              = ET_EXEC;
+    header.e_machine           = EM_X86_64;
+    header.e_version           = EV_CURRENT;
+    header.e_ehsize            = sizeof(Elf64_Ehdr);
+
+    write_fixture(&header, sizeof(header));
+
+    struct forge_elf elf;
+
+    assert(forge_elf_parse(fixture_path, &elf) == 0);
+    assert(elf.dynamic == 0);
+    assert(elf.interpreter == NULL);
+    assert(elf.needed_count == 0);
+
+    forge_elf_free(&elf);
+    remove_fixture();
 
     test_pass();
 }
