@@ -472,12 +472,11 @@ The project is intended to remain small and modular:
 ```text
 forge/
 ├── include/
-│   └── forge/
-│       ├── config.h
-│       ├── elf.h
-│       ├── resolver.h
-│       ├── rootfs.h
-│       └── ...
+│   ├── config.h
+│   ├── elf.h
+│   ├── resolver.h
+│   ├── rootfs.h
+│   └── ...
 │
 ├── src/
 │   ├── main.c
