@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <ftw.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,7 +70,6 @@ static void test_nested_path(void)
     assert(forge_rootfs_init(&rootfs, "/tmp/forge-rootfs") == 0);
 
     assert(forge_rootfs_path(&rootfs, "/usr/lib/libc.so.6", &destination) == 0);
-
     assert(strcmp(destination, "/tmp/forge-rootfs/usr/lib/libc.so.6") == 0);
 
     free(destination);
@@ -103,6 +103,41 @@ static void test_copy_binary(void)
            (source_status.st_mode & 07777));
 
     forge_rootfs_free(&rootfs);
+    remove_rootfs(output);
+
+    test_pass();
+}
+
+static void test_preserve_permissions(void)
+{
+    const char *source = "/tmp/forge-rootfs-source";
+    const char *output = "tests/rootfs-copy";
+
+    struct forge_rootfs rootfs;
+    struct stat         source_status;
+    struct stat         destination_status;
+
+    test_begin("preserve file permissions");
+
+    remove_rootfs(output);
+    unlink(source);
+
+    assert(creat(source, 0601) >= 0);
+    assert(chmod(source, 0601) == 0);
+    assert(stat(source, &source_status) == 0);
+
+    assert(forge_rootfs_init(&rootfs, output) == 0);
+    assert(forge_rootfs_copy(&rootfs, source) == 0);
+
+    assert(stat("tests/rootfs-copy/tmp/forge-rootfs-source",
+                &destination_status) == 0);
+
+    assert((destination_status.st_mode & 07777) ==
+           (source_status.st_mode & 07777));
+
+    forge_rootfs_free(&rootfs);
+
+    unlink(source);
     remove_rootfs(output);
 
     test_pass();
@@ -226,6 +261,7 @@ int main(void)
     test_path();
     test_nested_path();
     test_copy_binary();
+    test_preserve_permissions();
     test_copy_nested_binary();
     test_copy_missing_source();
     test_copy_non_regular();

@@ -87,6 +87,20 @@ static int copy_file(const char *source, const char *destination, mode_t mode)
         return -1;
     }
 
+    /*
+     * open() applies the process umask to newly created files.
+     * Restore the source permission bits explicitly so the rootfs
+     * preserves the source file's mode.
+     */
+    if (fchmod(destination_fd, mode) < 0) {
+        fprintf(stderr, "failed to set permissions on %s: %s\n", destination,
+                strerror(errno));
+        close(destination_fd);
+        close(source_fd);
+        unlink(destination);
+        return -1;
+    }
+
     char buffer[65536];
 
     int result = 0;
