@@ -23,6 +23,13 @@ TEST_ALPINE_SRC := \
 	tests/utils.c \
 	src/alpine.c
 
+TEST_ELF_TARGET := tests/test-elf
+
+TEST_ELF_SRC := \
+	tests/elf.c \
+	tests/utils.c \
+	src/elf.c
+
 ROOTFS := rootfs
 
 .PHONY: all clean test
@@ -38,9 +45,13 @@ $(TEST_CONFIG_TARGET): $(TEST_CONFIG_SRC)
 $(TEST_ALPINE_TARGET): $(TEST_ALPINE_SRC)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_ALPINE_SRC)
 
-test: $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET)
+$(TEST_ELF_TARGET): $(TEST_ELF_SRC)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_ELF_SRC)
+
+test: $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET) $(TEST_ELF_TARGET)
 	./$(TEST_CONFIG_TARGET)
 	./$(TEST_ALPINE_TARGET)
+	./$(TEST_ELF_TARGET)
 
 clean:
-	rm -dfr $(TARGET) $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET) $(ROOTFS)
+	rm -dfr $(TARGET) $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET) $(TEST_ELF_TARGET) $(ROOTFS)
