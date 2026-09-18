@@ -1,3 +1,4 @@
+#include <alpine.h>
 #include <config.h>
 
 #include <getopt.h>
@@ -5,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define FORGE_VERSION "0.1.0-alpha"
+#define FORGE_VERSION "0.2.0-alpha"
 
 enum command {
     COMMAND_NONE,
@@ -98,14 +99,13 @@ static int run_build(const char *path)
     if (forge_config_parse(path, &config) < 0)
         return EXIT_FAILURE;
 
-    /*
-     * Rootfs building will be implemented in M2.
-     */
-    printf("configuration is valid: %s\n", path);
+    int result =
+            forge_alpine_prepare(config.base.version, config.base.architecture,
+                                 config.rootfs.output);
 
     forge_config_free(&config);
 
-    return EXIT_SUCCESS;
+    return result < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
 int main(int argc, char **argv)

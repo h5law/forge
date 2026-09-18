@@ -1,6 +1,6 @@
 [base]
 distribution = "alpine"
-version = "3.22"
+version = "3.24.2"
 architecture = "x86_64"
 
 [rootfs]
