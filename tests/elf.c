@@ -37,6 +37,43 @@ static void test_parse_interpreter(void)
     test_pass();
 }
 
+static void test_parse_needed(void)
+{
+    test_begin("extract DT_NEEDED entries");
+
+    struct forge_elf elf;
+
+    assert(forge_elf_parse("/bin/sh", &elf) == 0);
+    assert(elf.dynamic != 0);
+    assert(elf.needed_count > 0);
+    assert(elf.needed != NULL);
+
+    for (size_t i = 0; i < elf.needed_count; ++i) {
+        assert(elf.needed[i] != NULL);
+        assert(strlen(elf.needed[i]) > 0);
+    }
+
+    forge_elf_free(&elf);
+
+    test_pass();
+}
+
+static void test_detect_dynamic(void)
+{
+    test_begin("detect dynamic ELF");
+
+    struct forge_elf elf;
+
+    assert(forge_elf_parse("/bin/sh", &elf) == 0);
+    assert(elf.dynamic != 0);
+    assert(elf.interpreter != NULL);
+    assert(elf.needed_count > 0);
+
+    forge_elf_free(&elf);
+
+    test_pass();
+}
+
 static void test_reject_non_elf(void)
 {
     test_begin("reject non-ELF file");
@@ -67,6 +104,8 @@ int main(void)
 
     test_parse_elf();
     test_parse_interpreter();
+    test_parse_needed();
+    test_detect_dynamic();
     test_reject_non_elf();
     test_reject_missing_file();
 
