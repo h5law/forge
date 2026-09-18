@@ -26,7 +26,7 @@ void test_fail(const char *message)
     fprintf(stderr, "    %s\n", message);
 }
 
-void test_skip() { puts("[SKIPPED]"); }
+void test_skip(void) { puts("[SKIPPED]"); }
 
 int test_run(void)
 {

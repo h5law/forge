@@ -2,7 +2,9 @@
 #include <config.h>
 #include <elf_parser.h>
 #include <resolver.h>
+#include <rootfs.h>
 
+#include <errno.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -118,13 +120,60 @@ static int run_build(const char *path)
     if (forge_config_parse(path, &config) < 0)
         return EXIT_FAILURE;
 
-    int result =
-            forge_alpine_prepare(config.base.version, config.base.architecture,
-                                 config.rootfs.output);
+    struct forge_rootfs rootfs;
 
+    if (forge_alpine_prepare(config.base.version, config.base.architecture,
+                             config.rootfs.output) < 0) {
+        forge_config_free(&config);
+        return EXIT_FAILURE;
+    }
+
+    if (forge_rootfs_init(&rootfs, config.rootfs.output) < 0) {
+        fprintf(stderr, "failed to initialise rootfs: %s\n", strerror(errno));
+        forge_config_free(&config);
+        return EXIT_FAILURE;
+    }
+
+    int result = EXIT_SUCCESS;
+
+    for (size_t i = 0; i < config.binaries.count; ++i) {
+        const char *binary = config.binaries.paths[i];
+
+        struct forge_dependency_tree tree;
+
+        if (forge_resolve_dependencies(binary, &tree) < 0) {
+            result = EXIT_FAILURE;
+            break;
+        }
+
+        if (forge_rootfs_copy(&rootfs, binary) < 0) {
+            forge_dependency_tree_free(&tree);
+            result = EXIT_FAILURE;
+            break;
+        }
+
+        for (size_t j = 0; j < tree.count; ++j) {
+            if (forge_rootfs_copy(&rootfs, tree.dependencies[j]->path) < 0) {
+                result = EXIT_FAILURE;
+                break;
+            }
+        }
+
+        if (result == EXIT_SUCCESS && tree.interpreter != NULL) {
+            if (forge_rootfs_copy(&rootfs, tree.interpreter) < 0)
+                result = EXIT_FAILURE;
+        }
+
+        forge_dependency_tree_free(&tree);
+
+        if (result != EXIT_SUCCESS)
+            break;
+    }
+
+    forge_rootfs_free(&rootfs);
     forge_config_free(&config);
 
-    return result < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
+    return result;
 }
 
 static void print_dependency_tree(const struct forge_dependency *dependency,
