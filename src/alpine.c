@@ -89,6 +89,12 @@ int forge_alpine_parse_version(const char *version, unsigned int *major,
     unsigned int patch;
     char         extra;
 
+    if (version == NULL || major == NULL || minor == NULL) {
+        fprintf(stderr, "invalid Alpine version\n");
+
+        return -1;
+    }
+
     if (sscanf(version, "%u.%u.%u%c", major, minor, &patch, &extra) != 3) {
         fprintf(stderr, "invalid Alpine version: %s\n", version);
 
@@ -253,6 +259,13 @@ int forge_alpine_prepare(const char *version, const char *architecture,
     char archive[PATH_MAX];
     char checksum[PATH_MAX];
 
+    /*
+     * Initialise these before any operation that can fail so that cleanup
+     * can safely attempt to remove them.
+     */
+    archive[0]  = '\0';
+    checksum[0] = '\0';
+
     if (download_release(version, architecture, archive, sizeof(archive),
                          checksum, sizeof(checksum)) < 0) {
         goto cleanup;
@@ -267,13 +280,15 @@ int forge_alpine_prepare(const char *version, const char *architecture,
     unlink(archive);
     unlink(checksum);
 
-    printf("Rootfs created: %s\n", output);
-
     return 0;
 
 cleanup:
-    unlink(archive);
-    unlink(checksum);
+    if (archive[0] != '\0')
+        unlink(archive);
+
+    if (checksum[0] != '\0')
+        unlink(checksum);
+
     remove_rootfs(output);
 
     return -1;

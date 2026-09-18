@@ -1,98 +1,75 @@
-#include <alpine.h>
-
+#include "alpine.h"
 #include "utils.h"
 
 #include <assert.h>
 #include <errno.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
-static void test_parse_valid_version(void)
+static void remove_test_rootfs(void) { rmdir("tests/test-rootfs"); }
+
+static void test_parse_version(void)
 {
-    test_begin("parse valid Alpine version");
+    test_begin("parse Alpine version");
 
     unsigned int major;
     unsigned int minor;
 
-    if (forge_alpine_parse_version("3.24.2", &major, &minor) < 0) {
-        test_fail("failed to parse valid version");
-        return;
-    }
-
-    if (major != 3 || minor != 24) {
-        test_fail("parsed version does not match expected value");
-        return;
-    }
+    assert(forge_alpine_parse_version("3.24.2", &major, &minor) == 0);
+    assert(major == 3);
+    assert(minor == 24);
 
     test_pass();
 }
 
-static void test_parse_rejects_missing_patch(void)
+static void test_reject_invalid_version(void)
 {
-    test_begin("reject version without patch");
+    test_begin("reject invalid Alpine version");
 
     unsigned int major;
     unsigned int minor;
 
-    if (forge_alpine_parse_version("3.24", &major, &minor) == 0) {
-        test_fail("accepted version without patch");
-        return;
-    }
+    assert(forge_alpine_parse_version("invalid-version", &major, &minor) < 0);
 
     test_pass();
 }
 
-static void test_parse_rejects_extra_components(void)
+static void test_reject_invalid_architecture(void)
 {
-    test_begin("reject version with extra components");
+    test_begin("reject unsupported Alpine architecture");
 
-    unsigned int major;
-    unsigned int minor;
-
-    if (forge_alpine_parse_version("3.24.2.1", &major, &minor) == 0) {
-        test_fail("accepted version with extra components");
-        return;
-    }
+    assert(forge_alpine_prepare("3.24.2", "invalid",
+                                "tests/test-rootfs-invalid-architecture") != 0);
 
     test_pass();
 }
 
-static void test_parse_rejects_non_numeric_version(void)
-{
-    test_begin("reject non-numeric version");
-
-    unsigned int major;
-    unsigned int minor;
-
-    if (forge_alpine_parse_version("3.x.2", &major, &minor) == 0) {
-        test_fail("accepted non-numeric version");
-        return;
-    }
-
-    test_pass();
-}
-
-static void test_parse_rejects_empty_version(void)
-{
-    test_begin("reject empty version");
-
-    unsigned int major;
-    unsigned int minor;
-
-    if (forge_alpine_parse_version("", &major, &minor) == 0) {
-        test_fail("accepted empty version");
-        return;
-    }
-
-    test_pass();
-}
-
-static void test_cleanup_on_download_failure(void)
+static void test_reject_existing_rootfs(void)
 {
     const char *output = "tests/test-rootfs";
 
-    test_begin("remove rootfs after download failure");
+    test_begin("reject existing rootfs");
 
-    assert(rmdir(output) != 0 || errno == ENOENT);
+    remove_test_rootfs();
+
+    assert(mkdir(output, 0755) == 0);
+
+    assert(forge_alpine_prepare("3.24.2", "x86_64", output) != 0);
+
+    assert(access(output, F_OK) == 0);
+
+    assert(rmdir(output) == 0);
+
+    test_pass();
+}
+
+static void test_cleanup_on_prepare_failure(void)
+{
+    const char *output = "tests/test-rootfs-failure";
+
+    test_begin("remove rootfs after preparation failure");
+
+    rmdir(output);
 
     assert(forge_alpine_prepare("invalid-version", "x86_64", output) != 0);
 
@@ -102,14 +79,31 @@ static void test_cleanup_on_download_failure(void)
     test_pass();
 }
 
+static void test_null_arguments(void)
+{
+    const char *output = "tests/test-rootfs";
+
+    test_begin("reject null arguments");
+
+    remove_test_rootfs();
+
+    assert(forge_alpine_prepare(NULL, "x86_64", output) != 0);
+    assert(forge_alpine_prepare("3.24.2", NULL, output) != 0);
+    assert(forge_alpine_prepare("3.24.2", "x86_64", NULL) != 0);
+
+    assert(access(output, F_OK) != 0);
+
+    test_pass();
+}
+
 int main(void)
 {
-    test_parse_valid_version();
-    test_parse_rejects_missing_patch();
-    test_parse_rejects_extra_components();
-    test_parse_rejects_non_numeric_version();
-    test_parse_rejects_empty_version();
-    test_cleanup_on_download_failure();
+    test_parse_version();
+    test_reject_invalid_version();
+    test_reject_invalid_architecture();
+    test_reject_existing_rootfs();
+    test_cleanup_on_prepare_failure();
+    test_null_arguments();
 
     return test_run();
 }

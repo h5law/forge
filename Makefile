@@ -8,6 +8,7 @@ TEST_CONFIG := tests/test-config
 TEST_ALPINE := tests/test-alpine
 TEST_ELF := tests/test-elf
 TEST_RESOLVER := tests/test-resolver
+TEST_ROOTFS := tests/test-rootfs-test
 
 FIXTURE_BIN_DIR := tests/fixtures/bin
 FIXTURE_CHILD_DIR := tests/fixtures/child
@@ -31,7 +32,8 @@ TESTS := \
 	$(TEST_CONFIG) \
 	$(TEST_ALPINE) \
 	$(TEST_ELF) \
-	$(TEST_RESOLVER)
+	$(TEST_RESOLVER) \
+	$(TEST_ROOTFS)
 
 
 .PHONY: all
@@ -62,6 +64,7 @@ test: $(TESTS)
 	./$(TEST_ALPINE)
 	./$(TEST_ELF)
 	./$(TEST_RESOLVER)
+	./$(TEST_ROOTFS)
 
 
 $(TEST_CONFIG): tests/config.c tests/utils.c src/config.c include/config.h
@@ -98,6 +101,17 @@ $(TEST_RESOLVER): \
 		tests/utils.c \
 		src/resolver.c \
 		src/elf.c
+
+
+$(TEST_ROOTFS): \
+	tests/rootfs.c \
+	tests/utils.c \
+	src/rootfs.c \
+	include/rootfs.h
+	$(CC) $(CFLAGS) -o $@ \
+		tests/rootfs.c \
+		tests/utils.c \
+		src/rootfs.c
 
 
 $(FIXTURE_CHILD): tests/fixtures/child.c | $(FIXTURE_CHILD_DIR)
@@ -179,6 +193,8 @@ clean:
 		$(TEST_ALPINE) \
 		$(TEST_ELF) \
 		$(TEST_RESOLVER) \
+		$(TEST_ROOTFS) \
+		tests/test-rootfs \
 		$(FIXTURE_BIN_DIR) \
 		$(FIXTURE_CHILD_DIR) \
 		$(FIXTURE_LIB_DIR) \
