@@ -1,5 +1,6 @@
 #include <alpine.h>
 #include <config.h>
+#include <elf_parser.h>
 
 #include <getopt.h>
 #include <stdio.h>
@@ -12,6 +13,7 @@ enum command {
     COMMAND_NONE,
     COMMAND_BUILD,
     COMMAND_VALIDATE,
+    COMMAND_DEPS,
 };
 
 static void usage(FILE *stream, const char *program)
@@ -24,6 +26,7 @@ static void usage(FILE *stream, const char *program)
             "Commands:\n"
             "  build      Build a rootfs from a configuration\n"
             "  validate   Parse and validate a configuration\n"
+            "  deps       Show ELF dependencies for configured binaries\n"
             "\n"
             "Options:\n"
             "  -h, --help       Show this help message\n"
@@ -59,6 +62,18 @@ static void command_usage(FILE *stream, const char *program,
                 program);
         break;
 
+    case COMMAND_DEPS:
+        fprintf(stream,
+                "usage: %s deps [options] <config>\n"
+                "\n"
+                "Show ELF dependencies for configured binaries.\n"
+                "\n"
+                "Options:\n"
+                "  -h, --help       Show this help message\n"
+                "  -V, --version    Show version information\n",
+                program);
+        break;
+
     case COMMAND_NONE:
         usage(stream, program);
         break;
@@ -74,6 +89,9 @@ static enum command parse_command(const char *command)
 
     if (strcmp(command, "validate") == 0)
         return COMMAND_VALIDATE;
+
+    if (strcmp(command, "deps") == 0)
+        return COMMAND_DEPS;
 
     return COMMAND_NONE;
 }
@@ -106,6 +124,51 @@ static int run_build(const char *path)
     forge_config_free(&config);
 
     return result < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+static void print_dependency_tree(const struct forge_elf *elf)
+{
+    for (size_t i = 0; i < elf->needed_count; ++i) {
+        const char *branch = i + 1 == elf->needed_count ? "└── " : "├── ";
+
+        printf("%s%s\n", branch, elf->needed[i]);
+    }
+}
+
+static int run_deps(const char *path)
+{
+    struct forge_config config;
+
+    if (forge_config_parse(path, &config) < 0)
+        return EXIT_FAILURE;
+
+    int result = EXIT_SUCCESS;
+
+    for (size_t i = 0; i < config.binaries.count; ++i) {
+        const char *binary = config.binaries.paths[i];
+
+        struct forge_elf elf;
+
+        if (forge_elf_parse(binary, &elf) < 0) {
+            result = EXIT_FAILURE;
+            continue;
+        }
+
+        printf("%s\n", binary);
+
+        if (elf.interpreter != NULL)
+            printf("├── interpreter: %s\n", elf.interpreter);
+
+        print_dependency_tree(&elf);
+
+        printf("\n");
+
+        forge_elf_free(&elf);
+    }
+
+    forge_config_free(&config);
+
+    return result;
 }
 
 int main(int argc, char **argv)
@@ -197,6 +260,9 @@ int main(int argc, char **argv)
 
     case COMMAND_VALIDATE:
         return run_validate(config_path);
+
+    case COMMAND_DEPS:
+        return run_deps(config_path);
 
     case COMMAND_NONE:
         break;

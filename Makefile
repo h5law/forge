@@ -7,7 +7,8 @@ TARGET := forge
 SRC := \
 	src/main.c \
 	src/config.c \
-	src/alpine.c
+	src/alpine.c \
+	src/elf.c
 
 TEST_CONFIG_TARGET := tests/test-config
 
@@ -22,6 +23,13 @@ TEST_ALPINE_SRC := \
 	tests/alpine.c \
 	tests/utils.c \
 	src/alpine.c
+
+TEST_ELF_TARGET := tests/test-elf
+
+TEST_ELF_SRC := \
+	tests/elf.c \
+	tests/utils.c \
+	src/elf.c
 
 ROOTFS := rootfs
 
@@ -38,9 +46,13 @@ $(TEST_CONFIG_TARGET): $(TEST_CONFIG_SRC)
 $(TEST_ALPINE_TARGET): $(TEST_ALPINE_SRC)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_ALPINE_SRC)
 
-test: $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET)
+$(TEST_ELF_TARGET): $(TEST_ELF_SRC)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_ELF_SRC)
+
+test: $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET) $(TEST_ELF_TARGET)
 	./$(TEST_CONFIG_TARGET)
 	./$(TEST_ALPINE_TARGET)
+	./$(TEST_ELF_TARGET)
 
 clean:
-	rm -dfr $(TARGET) $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET) $(ROOTFS)
+	rm -dfr $(TARGET) $(TEST_CONFIG_TARGET) $(TEST_ALPINE_TARGET) $(TEST_ELF_TARGET) $(ROOTFS)

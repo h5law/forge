@@ -474,11 +474,10 @@ forge/
 ├── include/
 │   ├── config.h
 │   ├── alpine.h
-│   ├── elf.h
+│   ├── elf_parser.h
 │   ├── resolver.h
 │   ├── rootfs.h
 │   └── ...
-│
 ├── src/
 │   ├── main.c
 │   ├── config.c
@@ -487,18 +486,16 @@ forge/
 │   ├── resolver.c
 │   ├── rootfs.c
 │   └── ...
-│
 ├── tests/
-│   ├── config/
-│   ├── elf/
-│   ├── resolver/
-│   └── rootfs/
-│
+│   ├── config.c
+│   ├── alpine.c
+│   ├── elf.c
+│   └── ...
 ├── examples/
 │   └── minimal.toml
-│
 ├── Makefile
-└── README.md
+├── README.md
+└── LICENSE
 ```
 
 ## Roadmap

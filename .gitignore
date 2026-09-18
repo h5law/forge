@@ -8,6 +8,7 @@ compile_commands.json
 # Tests
 tests/test-config
 tests/test-alpine
+tests/test-elf
 
 # rootfs
 rootfs/*
