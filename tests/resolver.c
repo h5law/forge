@@ -109,6 +109,44 @@ static void test_recursive_dependencies(void)
     test_pass();
 }
 
+static void test_resolve_script(void)
+{
+    test_begin("resolve script interpreter");
+
+    FILE *file = fopen(script_fixture, "wb");
+
+    assert(file != NULL);
+    assert(fputs("#!/bin/sh\nprintf 'hello\\n'\n", file) >= 0);
+    assert(fclose(file) == 0);
+
+    struct forge_dependency_tree tree;
+
+    assert(forge_resolve_dependencies(script_fixture, &tree) == 0);
+
+    assert(tree.count > 0);
+    assert(tree.interpreter != NULL);
+
+    int found_interpreter = 0;
+
+    for (size_t i = 0; i < tree.count; ++i) {
+        if (strcmp(tree.dependencies[i]->path, "/bin/sh") == 0) {
+            found_interpreter = 1;
+            break;
+        }
+    }
+
+    assert(found_interpreter);
+
+    for (size_t i = 0; i < tree.count; ++i)
+        assert(strcmp(tree.dependencies[i]->path, tree.interpreter) != 0);
+
+    assert(unlink(script_fixture) == 0);
+
+    forge_dependency_tree_free(&tree);
+
+    test_pass();
+}
+
 static void test_rpath_resolution(void)
 {
     test_begin("resolve libraries through RPATH");
@@ -132,30 +170,6 @@ static void test_rpath_resolution(void)
 
     assert(found_parent);
     assert(found_child);
-
-    forge_dependency_tree_free(&tree);
-
-    test_pass();
-}
-
-static void test_resolve_script(void)
-{
-    test_begin("accept script without ELF dependencies");
-
-    FILE *file = fopen(script_fixture, "wb");
-
-    assert(file != NULL);
-    assert(fputs("#!/bin/sh\nprintf 'hello\\n'\n", file) >= 0);
-    assert(fclose(file) == 0);
-
-    struct forge_dependency_tree tree;
-
-    assert(forge_resolve_dependencies(script_fixture, &tree) == 0);
-    assert(tree.interpreter == NULL);
-    assert(tree.dependencies == NULL);
-    assert(tree.count == 0);
-
-    assert(unlink(script_fixture) == 0);
 
     forge_dependency_tree_free(&tree);
 

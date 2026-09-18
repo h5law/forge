@@ -3,4 +3,6 @@
 
 int forge_file_is_script(const char *path);
 
+int forge_file_get_script_interpreter(const char *path, char **interpreter);
+
 #endif

@@ -603,6 +603,92 @@ static int resolve_interpreter(const struct forge_elf       *elf,
     return 0;
 }
 
+static int resolve_script(const char                   *script,
+                          struct forge_dependency_tree *tree)
+{
+    char *interpreter_path = NULL;
+
+    if (forge_file_get_script_interpreter(script, &interpreter_path) < 0) {
+        fprintf(stderr, "failed to detect script interpreter for '%s': %s\n",
+                script, strerror(errno));
+        return -1;
+    }
+
+    struct forge_elf elf;
+
+    if (forge_elf_parse(interpreter_path, &elf) < 0) {
+        fprintf(stderr, "failed to parse script interpreter '%s'\n",
+                interpreter_path);
+
+        free(interpreter_path);
+
+        return -1;
+    }
+
+    if (resolve_interpreter(&elf, tree) < 0) {
+        forge_elf_free(&elf);
+        free(interpreter_path);
+        forge_dependency_tree_free(tree);
+
+        return -1;
+    }
+
+    struct forge_dependency *dependency =
+            dependency_create(interpreter_path, interpreter_path);
+
+    if (dependency == NULL) {
+        forge_elf_free(&elf);
+        free(interpreter_path);
+        forge_dependency_tree_free(tree);
+
+        return -1;
+    }
+
+    if (tree_add_dependency(tree, dependency) < 0) {
+        dependency_free(dependency);
+        forge_elf_free(&elf);
+        free(interpreter_path);
+        forge_dependency_tree_free(tree);
+
+        return -1;
+    }
+
+    unsigned int elf_class             = elf.elf_class;
+    unsigned int machine               = elf.machine;
+
+    const char *inherited_rpath        = NULL;
+    char       *inherited_rpath_origin = NULL;
+
+    if (elf.runpath == NULL && elf.rpath != NULL) {
+        inherited_rpath        = elf.rpath;
+        inherited_rpath_origin = path_directory(interpreter_path);
+
+        if (inherited_rpath_origin == NULL) {
+            forge_elf_free(&elf);
+            free(interpreter_path);
+            forge_dependency_tree_free(tree);
+
+            return -1;
+        }
+    }
+
+    if (resolve_dependency(dependency, elf_class, machine, tree->interpreter,
+                           inherited_rpath, inherited_rpath_origin, tree) < 0) {
+        free(inherited_rpath_origin);
+        forge_elf_free(&elf);
+        free(interpreter_path);
+        forge_dependency_tree_free(tree);
+
+        return -1;
+    }
+
+    free(inherited_rpath_origin);
+    forge_elf_free(&elf);
+    free(interpreter_path);
+
+    return 0;
+}
+
 int forge_resolve_dependencies(const char                   *binary,
                                struct forge_dependency_tree *tree)
 {
@@ -617,7 +703,7 @@ int forge_resolve_dependencies(const char                   *binary,
         return -1;
 
     if (is_script)
-        return 0;
+        return resolve_script(binary, tree);
 
     struct forge_elf elf;
 
