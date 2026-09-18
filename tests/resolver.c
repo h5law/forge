@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <string.h>
 
+static const char *rpath_fixture   = "tests/fixtures/bin/forge-rpath";
+
+static const char *runpath_fixture = "tests/fixtures/bin/forge-runpath";
+
 static void test_resolve_dependencies(void)
 {
     test_begin("resolve recursive dependencies");
@@ -100,6 +104,46 @@ static void test_recursive_dependencies(void)
     test_pass();
 }
 
+static void test_rpath_resolution(void)
+{
+    test_begin("resolve libraries through RPATH");
+
+    struct forge_dependency_tree tree;
+
+    assert(forge_resolve_dependencies(rpath_fixture, &tree) == 0);
+
+    int found_parent = 0;
+    int found_child  = 0;
+
+    for (size_t i = 0; i < tree.count; ++i) {
+        if (strcmp(tree.dependencies[i]->name, "libforge-parent.so") == 0) {
+            found_parent = 1;
+        }
+
+        if (strcmp(tree.dependencies[i]->name, "libforge-child.so") == 0) {
+            found_child = 1;
+        }
+    }
+
+    assert(found_parent);
+    assert(found_child);
+
+    forge_dependency_tree_free(&tree);
+
+    test_pass();
+}
+
+static void test_runpath_not_transitive(void)
+{
+    test_begin("do not inherit RUNPATH");
+
+    struct forge_dependency_tree tree;
+
+    assert(forge_resolve_dependencies(runpath_fixture, &tree) < 0);
+
+    test_pass();
+}
+
 static void test_resolve_missing_binary(void)
 {
     test_begin("reject missing binary");
@@ -142,6 +186,8 @@ int main(void)
     test_interpreter_not_dependency();
     test_dependencies_have_paths();
     test_recursive_dependencies();
+    test_rpath_resolution();
+    test_runpath_not_transitive();
     test_resolve_missing_binary();
     test_resolve_null_binary();
     test_resolve_null_tree();

@@ -20,58 +20,303 @@ static int elf_is_compatible(const struct forge_elf *elf,
     return elf->elf_class == elf_class && elf->machine == machine;
 }
 
-static char *resolve_library(const char *name, unsigned int elf_class,
-                             unsigned int machine)
+static char *path_directory(const char *path)
+{
+    if (path == NULL || path[0] == '\0')
+        return NULL;
+
+    const char *slash = strrchr(path, '/');
+
+    if (slash == NULL)
+        return strdup(".");
+
+    if (slash == path)
+        return strdup("/");
+
+    size_t length   = ( size_t )(slash - path);
+
+    char *directory = malloc(length + 1);
+
+    if (directory == NULL) {
+        fprintf(stderr, "failed to allocate path directory: %s\n",
+                strerror(errno));
+        return NULL;
+    }
+
+    memcpy(directory, path, length);
+    directory[length] = '\0';
+
+    return directory;
+}
+
+static char *expand_origin(const char *directory, const char *search_path)
+{
+    if (directory == NULL || search_path == NULL)
+        return NULL;
+
+    const char  *origin        = "$ORIGIN";
+    const size_t origin_length = strlen(origin);
+
+    size_t directory_length    = strlen(directory);
+    size_t search_length       = strlen(search_path);
+
+    size_t      occurrences    = 0;
+    const char *cursor         = search_path;
+
+    while ((cursor = strstr(cursor, origin)) != NULL) {
+        ++occurrences;
+        cursor += origin_length;
+    }
+
+    if (occurrences == 0)
+        return strdup(search_path);
+
+    size_t replacement_length = directory_length;
+
+    if (directory_length >= origin_length) {
+        size_t delta = directory_length - origin_length;
+
+        if (occurrences > SIZE_MAX / delta)
+            return NULL;
+
+        replacement_length = search_length + occurrences * delta;
+    } else {
+        size_t delta = origin_length - directory_length;
+
+        if (occurrences > search_length / delta)
+            return NULL;
+
+        replacement_length = search_length - occurrences * delta;
+    }
+
+    if (replacement_length == SIZE_MAX)
+        return NULL;
+
+    char *expanded = malloc(replacement_length + 1);
+
+    if (expanded == NULL) {
+        fprintf(stderr, "failed to allocate expanded search path: %s\n",
+                strerror(errno));
+        return NULL;
+    }
+
+    char *output = expanded;
+    cursor       = search_path;
+
+    while (*cursor != '\0') {
+        const char *match = strstr(cursor, origin);
+
+        if (match == NULL) {
+            size_t remaining = strlen(cursor);
+            memcpy(output, cursor, remaining);
+            output += remaining;
+            break;
+        }
+
+        size_t prefix_length = ( size_t )(match - cursor);
+
+        memcpy(output, cursor, prefix_length);
+        output += prefix_length;
+
+        memcpy(output, directory, directory_length);
+        output += directory_length;
+
+        cursor  = match + origin_length;
+    }
+
+    *output = '\0';
+
+    return expanded;
+}
+
+static char *build_library_path(const char *directory, const char *name)
+{
+    if (directory == NULL || name == NULL || name[0] == '\0')
+        return NULL;
+
+    size_t directory_length = strlen(directory);
+    size_t name_length      = strlen(name);
+
+    if (directory_length > SIZE_MAX - name_length - 2)
+        return NULL;
+
+    size_t length = directory_length + 1 + name_length + 1;
+
+    char *path    = malloc(length);
+
+    if (path == NULL) {
+        fprintf(stderr, "failed to allocate library path: %s\n",
+                strerror(errno));
+        return NULL;
+    }
+
+    snprintf(path, length, "%s/%s", directory, name);
+
+    return path;
+}
+
+static char *probe_library(const char *path, unsigned int elf_class,
+                           unsigned int machine)
+{
+    struct forge_elf elf;
+
+    /*
+     * Candidate probing is deliberately quiet. A file can exist
+     * but be an incompatible ELF, so parser failure is not itself
+     * an error during library lookup.
+     */
+    if (forge_elf_parse_quiet(path, &elf) < 0)
+        return NULL;
+
+    int compatible = elf_is_compatible(&elf, elf_class, machine);
+
+    forge_elf_free(&elf);
+
+    if (!compatible)
+        return NULL;
+
+    return strdup(path);
+}
+
+static char *resolve_in_search_path(const char *search_path, const char *origin,
+                                    const char *name, unsigned int elf_class,
+                                    unsigned int machine)
+{
+    if (search_path == NULL || search_path[0] == '\0')
+        return NULL;
+
+    const char *cursor = search_path;
+
+    while (1) {
+        const char *separator = strchr(cursor, ':');
+
+        size_t length;
+
+        if (separator == NULL)
+            length = strlen(cursor);
+        else
+            length = ( size_t )(separator - cursor);
+
+        /*
+         * An empty component is deliberately ignored. The resolver
+         * must not implicitly search the current working directory.
+         */
+        if (length > 0) {
+            char *component = malloc(length + 1);
+
+            if (component == NULL) {
+                fprintf(stderr,
+                        "failed to allocate search path component: %s\n",
+                        strerror(errno));
+                return NULL;
+            }
+
+            memcpy(component, cursor, length);
+            component[length] = '\0';
+
+            char *expanded    = expand_origin(origin, component);
+
+            free(component);
+
+            if (expanded == NULL)
+                return NULL;
+
+            char *candidate = build_library_path(expanded, name);
+
+            free(expanded);
+
+            if (candidate == NULL)
+                return NULL;
+
+            char *resolved = probe_library(candidate, elf_class, machine);
+
+            free(candidate);
+
+            if (resolved != NULL)
+                return resolved;
+        }
+
+        if (separator == NULL)
+            break;
+
+        cursor = separator + 1;
+    }
+
+    return NULL;
+}
+
+static char *resolve_library(const char *name, const char *requester,
+                             const char *rpath, const char *runpath,
+                             const char  *inherited_rpath,
+                             unsigned int elf_class, unsigned int machine)
 {
     if (name == NULL || name[0] == '\0')
         return NULL;
 
+    char *origin = path_directory(requester);
+
+    if (origin == NULL)
+        return NULL;
+
+    /*
+     * RUNPATH takes precedence over RPATH for the object itself.
+     * RUNPATH is not inherited by children.
+     */
+    if (runpath != NULL) {
+        char *resolved = resolve_in_search_path(runpath, origin, name,
+                                                elf_class, machine);
+
+        if (resolved != NULL) {
+            free(origin);
+            return resolved;
+        }
+    } else if (rpath != NULL) {
+        char *resolved =
+                resolve_in_search_path(rpath, origin, name, elf_class, machine);
+
+        if (resolved != NULL) {
+            free(origin);
+            return resolved;
+        }
+    }
+
+    /*
+     * RPATH is transitive. A parent RPATH therefore remains available
+     * while resolving descendants unless the descendant's own search
+     * path already found the library.
+     */
+    if (inherited_rpath != NULL) {
+        char *resolved = resolve_in_search_path(inherited_rpath, origin, name,
+                                                elf_class, machine);
+
+        if (resolved != NULL) {
+            free(origin);
+            return resolved;
+        }
+    }
+
     size_t library_path_count =
             sizeof(library_paths) / sizeof(library_paths[0]);
 
-    size_t name_length = strlen(name);
-
     for (size_t i = 0; i < library_path_count; ++i) {
-        const char *directory   = library_paths[i];
+        char *candidate = build_library_path(library_paths[i], name);
 
-        size_t directory_length = strlen(directory);
-
-        if (directory_length > SIZE_MAX - name_length - 2)
-            return NULL;
-
-        size_t length = directory_length + 1 + name_length + 1;
-
-        char *path    = malloc(length);
-
-        if (path == NULL) {
-            fprintf(stderr, "failed to allocate library path: %s\n",
-                    strerror(errno));
+        if (candidate == NULL) {
+            free(origin);
             return NULL;
         }
 
-        snprintf(path, length, "%s/%s", directory, name);
+        char *resolved = probe_library(candidate, elf_class, machine);
 
-        struct forge_elf elf;
+        free(candidate);
 
-        /*
-         * Candidate probing is deliberately quiet. A file can exist
-         * but be an incompatible ELF, so parser failure is not itself
-         * an error during library lookup.
-         */
-        if (forge_elf_parse_quiet(path, &elf) < 0) {
-            free(path);
-            continue;
+        if (resolved != NULL) {
+            free(origin);
+            return resolved;
         }
-
-        int compatible = elf_is_compatible(&elf, elf_class, machine);
-
-        forge_elf_free(&elf);
-
-        if (compatible)
-            return path;
-
-        free(path);
     }
+
+    free(origin);
 
     return NULL;
 }
@@ -182,6 +427,7 @@ tree_find_dependency(const struct forge_dependency_tree *tree, const char *path)
 static int resolve_dependency(struct forge_dependency *dependency,
                               unsigned int elf_class, unsigned int machine,
                               const char                   *interpreter,
+                              const char                   *inherited_rpath,
                               struct forge_dependency_tree *tree)
 {
     if (dependency->state == FORGE_DEPENDENCY_RESOLVED)
@@ -212,10 +458,21 @@ static int resolve_dependency(struct forge_dependency *dependency,
         return -1;
     }
 
+    /*
+     * If this object has an RPATH and no RUNPATH, its RPATH becomes
+     * available transitively to its descendants.
+     */
+    const char *next_inherited_rpath = inherited_rpath;
+
+    if (elf.runpath == NULL && elf.rpath != NULL)
+        next_inherited_rpath = elf.rpath;
+
     for (size_t i = 0; i < elf.needed_count; ++i) {
         const char *name = elf.needed[i];
 
-        char *resolved   = resolve_library(name, elf_class, machine);
+        char *resolved =
+                resolve_library(name, dependency->path, elf.rpath, elf.runpath,
+                                inherited_rpath, elf_class, machine);
 
         if (resolved == NULL) {
             fprintf(stderr, "failed to resolve dependency '%s' of '%s'\n", name,
@@ -265,8 +522,8 @@ static int resolve_dependency(struct forge_dependency *dependency,
             return -1;
         }
 
-        if (resolve_dependency(child, elf_class, machine, interpreter, tree) <
-            0) {
+        if (resolve_dependency(child, elf_class, machine, interpreter,
+                               next_inherited_rpath, tree) < 0) {
             forge_elf_free(&elf);
             dependency->state = FORGE_DEPENDENCY_UNRESOLVED;
             return -1;
@@ -346,7 +603,8 @@ int forge_resolve_dependencies(const char                   *binary,
     for (size_t i = 0; i < elf.needed_count; ++i) {
         const char *name = elf.needed[i];
 
-        char *resolved   = resolve_library(name, elf_class, machine);
+        char *resolved   = resolve_library(name, binary, elf.rpath, elf.runpath,
+                                           NULL, elf_class, machine);
 
         if (resolved == NULL) {
             fprintf(stderr, "failed to resolve dependency '%s' of '%s'\n", name,
@@ -390,8 +648,13 @@ int forge_resolve_dependencies(const char                   *binary,
 
         free(resolved);
 
+        const char *inherited_rpath = NULL;
+
+        if (elf.runpath == NULL)
+            inherited_rpath = elf.rpath;
+
         if (resolve_dependency(dependency, elf_class, machine,
-                               tree->interpreter, tree) < 0) {
+                               tree->interpreter, inherited_rpath, tree) < 0) {
             forge_elf_free(&elf);
             forge_dependency_tree_free(tree);
             return -1;

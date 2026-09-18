@@ -7,6 +7,10 @@ compile_commands.json
 
 # Tests
 tests/test-*
+tests/fixtures/bin
+tests/fixtures/child
+tests/fixtures/lib
+tests/fixtures/rpath.toml
 
 # rootfs
 rootfs/*

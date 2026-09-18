@@ -36,9 +36,22 @@ TEST_RESOLVER_SRC := \
 	src/resolver.c \
 	src/elf.c
 
+FIXTURE_DIR := tests/fixtures
+
+FIXTURE_CHILD := $(FIXTURE_DIR)/child/libforge-child.so
+FIXTURE_PARENT := $(FIXTURE_DIR)/lib/libforge-parent.so
+FIXTURE_RPATH := $(FIXTURE_DIR)/bin/forge-rpath
+FIXTURE_RUNPATH := $(FIXTURE_DIR)/bin/forge-runpath
+
+FIXTURES := \
+	$(FIXTURE_CHILD) \
+	$(FIXTURE_PARENT) \
+	$(FIXTURE_RPATH) \
+	$(FIXTURE_RUNPATH)
+
 ROOTFS := rootfs
 
-.PHONY: all clean test
+.PHONY: all clean test fixtures
 
 all: $(TARGET)
 
@@ -54,8 +67,46 @@ $(TEST_ALPINE_TARGET): $(TEST_ALPINE_SRC)
 $(TEST_ELF_TARGET): $(TEST_ELF_SRC)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_ELF_SRC)
 
-$(TEST_RESOLVER_TARGET): $(TEST_RESOLVER_SRC)
+$(TEST_RESOLVER_TARGET): $(TEST_RESOLVER_SRC) $(FIXTURES)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_RESOLVER_SRC)
+
+$(FIXTURE_DIR)/child:
+	mkdir -p $@
+
+$(FIXTURE_DIR)/lib:
+	mkdir -p $@
+
+$(FIXTURE_DIR)/bin:
+	mkdir -p $@
+
+$(FIXTURE_CHILD): $(FIXTURE_DIR)/child tests/fixtures/child.c
+	$(CC) -shared -fPIC -o $@ tests/fixtures/child.c
+
+$(FIXTURE_PARENT): $(FIXTURE_DIR)/lib $(FIXTURE_CHILD) tests/fixtures/parent.c
+	$(CC) -shared -fPIC \
+		-Wl,-soname,libforge-parent.so \
+		-L$(FIXTURE_DIR)/child \
+		-Wl,-rpath-link,$(FIXTURE_DIR)/child \
+		-o $@ tests/fixtures/parent.c \
+		-lforge-child
+
+$(FIXTURE_RPATH): $(FIXTURE_DIR)/bin $(FIXTURE_PARENT) tests/fixtures/main.c
+	$(CC) \
+		-Wl,--disable-new-dtags \
+		-Wl,-rpath,'$$ORIGIN/../lib:$$ORIGIN/../child' \
+		-L$(FIXTURE_DIR)/lib \
+		-o $@ tests/fixtures/main.c \
+		-lforge-parent
+
+$(FIXTURE_RUNPATH): $(FIXTURE_DIR)/bin $(FIXTURE_PARENT) tests/fixtures/main.c
+	$(CC) \
+		-Wl,--enable-new-dtags \
+		-Wl,-rpath,'$$ORIGIN/../lib:$$ORIGIN/../child' \
+		-L$(FIXTURE_DIR)/lib \
+		-o $@ tests/fixtures/main.c \
+		-lforge-parent
+
+fixtures: $(FIXTURES)
 
 test: \
 	$(TEST_CONFIG_TARGET) \
@@ -73,4 +124,7 @@ clean:
 		$(TEST_ALPINE_TARGET) \
 		$(TEST_ELF_TARGET) \
 		$(TEST_RESOLVER_TARGET) \
+		$(FIXTURE_DIR)/bin \
+		$(FIXTURE_DIR)/child \
+		$(FIXTURE_DIR)/lib \
 		$(ROOTFS)
