@@ -195,23 +195,36 @@ static void test_copy_symlink(void)
     test_pass();
 }
 
-static void test_copy_nested_binary(void)
+static void test_copy_parent_directories(void)
 {
+    const char *source = "/tmp/forge-rootfs-source";
     const char *output = "tests/rootfs-copy";
 
     struct forge_rootfs rootfs;
+    struct stat         status;
 
-    test_begin("copy binary with parent directories");
+    test_begin("create required parent directories");
 
     remove_rootfs(output);
+    unlink(source);
+
+    int source_fd = creat(source, 0644);
+
+    assert(source_fd >= 0);
+    assert(close(source_fd) == 0);
 
     assert(forge_rootfs_init(&rootfs, output) == 0);
+    assert(forge_rootfs_copy(&rootfs, source) == 0);
 
-    assert(forge_rootfs_copy(&rootfs, "/usr/bin/env") == 0);
+    assert(stat("tests/rootfs-copy/tmp", &status) == 0);
+    assert(S_ISDIR(status.st_mode));
 
-    assert(access("tests/rootfs-copy/usr/bin/env", F_OK) == 0);
+    assert(stat("tests/rootfs-copy/tmp/forge-rootfs-source", &status) == 0);
+    assert(S_ISREG(status.st_mode));
 
     forge_rootfs_free(&rootfs);
+
+    unlink(source);
     remove_rootfs(output);
 
     test_pass();
@@ -315,7 +328,7 @@ int main(void)
     test_copy_binary();
     test_preserve_permissions();
     test_copy_symlink();
-    test_copy_nested_binary();
+    test_copy_parent_directories();
     test_copy_missing_source();
     test_copy_non_regular();
     test_copy_interpreter();
