@@ -531,12 +531,12 @@ forge/
 
 ### rootfs Assembly
 
-- [ ] Copy requested binaries into the rootfs
-- [ ] Copy resolved libraries into the rootfs
-- [ ] Copy required dynamic linker
-- [ ] Preserve filesystem metadata
-- [ ] Handle symlinked libraries
-- [ ] Handle required parent directories
+- [x] Copy requested binaries into the rootfs
+- [x] Copy resolved libraries into the rootfs
+- [x] Copy required dynamic linker
+- [x] Preserve filesystem metadata
+- [x] Handle symlinked libraries
+- [x] Handle required parent directories
 
 ### Special Cases
 
