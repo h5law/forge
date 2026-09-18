@@ -17,6 +17,8 @@ struct forge_elf {
 
 int forge_elf_parse(const char *path, struct forge_elf *elf);
 
+int forge_elf_parse_quiet(const char *path, struct forge_elf *elf);
+
 void forge_elf_free(struct forge_elf *elf);
 
 #endif
