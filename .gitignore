@@ -4,6 +4,7 @@ forge
 # Outputs
 */*.o
 compile_commands.json
+test-config
 
 # rootfs
 rootfs/*

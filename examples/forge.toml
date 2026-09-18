@@ -1,0 +1,13 @@
+[base]
+distribution = "alpine"
+version = "3.22"
+architecture = "x86_64"
+
+[rootfs]
+output = "./rootfs"
+
+[binaries]
+paths = [
+    "/bin/sh",
+    "/bin/ls",
+]
