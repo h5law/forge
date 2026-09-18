@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <elf.h>
 #include <stdio.h>
+#include <string.h>
 
 static void test_parse_elf(void)
 {
@@ -15,6 +16,21 @@ static void test_parse_elf(void)
     assert(forge_elf_parse("/bin/sh", &elf) == 0);
     assert(elf.machine == EM_X86_64);
     assert(elf.elf_class == ELFCLASS64);
+
+    forge_elf_free(&elf);
+
+    test_pass();
+}
+
+static void test_parse_interpreter(void)
+{
+    test_begin("extract ELF interpreter");
+
+    struct forge_elf elf;
+
+    assert(forge_elf_parse("/bin/sh", &elf) == 0);
+    assert(elf.interpreter != NULL);
+    assert(elf.interpreter[0] == '/');
 
     forge_elf_free(&elf);
 
@@ -50,6 +66,7 @@ int main(void)
     puts("");
 
     test_parse_elf();
+    test_parse_interpreter();
     test_reject_non_elf();
     test_reject_missing_file();
 

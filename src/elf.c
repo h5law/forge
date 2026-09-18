@@ -18,6 +18,95 @@ static int read_header(FILE *file, Elf64_Ehdr *header)
     return 0;
 }
 
+static int read_program_headers(FILE *file, const Elf64_Ehdr *header,
+                                struct forge_elf *elf)
+{
+    if (header->e_phnum == 0)
+        return 0;
+
+    if (header->e_phentsize != sizeof(Elf64_Phdr)) {
+        fprintf(stderr, "unsupported ELF program header size: %u\n",
+                header->e_phentsize);
+
+        return -1;
+    }
+
+    if (fseek(file, ( long )header->e_phoff, SEEK_SET) < 0) {
+        fprintf(stderr, "failed to seek to program headers: %s\n",
+                strerror(errno));
+
+        return -1;
+    }
+
+    for (unsigned int i = 0; i < header->e_phnum; ++i) {
+        Elf64_Phdr program_header;
+
+        if (fread(&program_header, sizeof(program_header), 1, file) != 1) {
+            fprintf(stderr, "failed to read ELF program header\n");
+
+            return -1;
+        }
+
+        if (program_header.p_type != PT_INTERP)
+            continue;
+
+        if (program_header.p_filesz == 0) {
+            fprintf(stderr, "ELF PT_INTERP segment is empty\n");
+
+            return -1;
+        }
+
+        if (program_header.p_filesz > SIZE_MAX - 1) {
+            fprintf(stderr, "ELF PT_INTERP segment is too large\n");
+
+            return -1;
+        }
+
+        size_t size       = ( size_t )program_header.p_filesz;
+
+        char *interpreter = malloc(size + 1);
+
+        if (interpreter == NULL) {
+            fprintf(stderr, "failed to allocate ELF interpreter\n");
+
+            return -1;
+        }
+
+        long offset = ( long )program_header.p_offset;
+
+        if (( Elf64_Off )offset != program_header.p_offset ||
+            fseek(file, offset, SEEK_SET) < 0) {
+            fprintf(stderr, "failed to seek to ELF interpreter: %s\n",
+                    strerror(errno));
+
+            free(interpreter);
+            return -1;
+        }
+
+        if (fread(interpreter, size, 1, file) != 1) {
+            fprintf(stderr, "failed to read ELF interpreter\n");
+
+            free(interpreter);
+            return -1;
+        }
+
+        interpreter[size] = '\0';
+
+        if (memchr(interpreter, '\0', size) == NULL) {
+            fprintf(stderr, "ELF PT_INTERP segment is not null terminated\n");
+
+            free(interpreter);
+            return -1;
+        }
+
+        elf->interpreter = interpreter;
+
+        break;
+    }
+
+    return 0;
+}
+
 int forge_elf_parse(const char *path, struct forge_elf *elf)
 {
     if (path == NULL || elf == NULL) {
@@ -87,11 +176,19 @@ int forge_elf_parse(const char *path, struct forge_elf *elf)
         return -1;
     }
 
+    if (read_program_headers(file, &header, elf) < 0) {
+        forge_elf_free(elf);
+        fclose(file);
+        return -1;
+    }
+
     elf->machine   = header.e_machine;
     elf->elf_class = header.e_ident[EI_CLASS];
 
     if (fclose(file) != 0) {
         fprintf(stderr, "failed to close %s: %s\n", path, strerror(errno));
+
+        forge_elf_free(elf);
 
         return -1;
     }
