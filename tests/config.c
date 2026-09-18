@@ -360,7 +360,7 @@ static void test_unsupported_architecture(void)
                     {
                            .distribution = "alpine",
                            .version      = "3.22",
-                           .architecture = "aarch64",
+                           .architecture = "mips64",
                            },
             .rootfs =
                     {
@@ -374,6 +374,44 @@ static void test_unsupported_architecture(void)
     };
 
     assert(forge_config_validate(&config) != 0);
+
+    test_pass();
+}
+
+static void test_additional_architectures(void)
+{
+    test_begin("accept additional architectures");
+
+    char *binary                = "/bin/sh";
+
+    const char *architectures[] = {
+            "x86_64",
+            "aarch64",
+            "riscv64",
+    };
+
+    for (size_t i = 0; i < sizeof(architectures) / sizeof(architectures[0]);
+         ++i) {
+        struct forge_config config = {
+                .base =
+                        {
+                               .distribution = "alpine",
+                               .version      = "3.22",
+                               .architecture = ( char * )architectures[i],
+                               },
+                .rootfs =
+                        {
+                               .output = "./rootfs",
+                               },
+                .binaries =
+                        {
+                               .paths = &binary,
+                               .count = 1,
+                               },
+        };
+
+        assert(forge_config_validate(&config) == 0);
+    }
 
     test_pass();
 }
@@ -567,6 +605,7 @@ int main(void)
     test_valid_config();
     test_unsupported_distribution();
     test_unsupported_architecture();
+    test_additional_architectures();
 
     puts("");
 

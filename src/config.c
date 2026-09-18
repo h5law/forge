@@ -585,7 +585,9 @@ int forge_config_validate(const struct forge_config *config)
         return -1;
     }
 
-    if (strcmp(config->base.architecture, "x86_64") != 0) {
+    if (strcmp(config->base.architecture, "x86_64") != 0 &&
+        strcmp(config->base.architecture, "aarch64") != 0 &&
+        strcmp(config->base.architecture, "riscv64") != 0) {
         fprintf(stderr, "unsupported architecture: %s\n",
                 config->base.architecture);
 

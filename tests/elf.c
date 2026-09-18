@@ -250,6 +250,72 @@ static void test_unsupported_machine(void)
     test_pass();
 }
 
+static void test_aarch64_machine(void)
+{
+    test_begin("accept AArch64 ELF architecture");
+
+    Elf64_Ehdr header;
+
+    memset(&header, 0, sizeof(header));
+
+    memcpy(header.e_ident, ELFMAG, SELFMAG);
+
+    header.e_ident[EI_CLASS]   = ELFCLASS64;
+    header.e_ident[EI_DATA]    = ELFDATA2LSB;
+    header.e_ident[EI_VERSION] = EV_CURRENT;
+
+    header.e_type              = ET_EXEC;
+    header.e_machine           = EM_AARCH64;
+    header.e_version           = EV_CURRENT;
+    header.e_ehsize            = sizeof(Elf64_Ehdr);
+
+    write_fixture(&header, sizeof(header));
+
+    struct forge_elf elf;
+
+    assert(forge_elf_parse(fixture_path, &elf) == 0);
+    assert(elf.machine == EM_AARCH64);
+    assert(elf.elf_class == ELFCLASS64);
+
+    forge_elf_free(&elf);
+    remove_fixture();
+
+    test_pass();
+}
+
+static void test_riscv64_machine(void)
+{
+    test_begin("accept RISC-V64 ELF architecture");
+
+    Elf64_Ehdr header;
+
+    memset(&header, 0, sizeof(header));
+
+    memcpy(header.e_ident, ELFMAG, SELFMAG);
+
+    header.e_ident[EI_CLASS]   = ELFCLASS64;
+    header.e_ident[EI_DATA]    = ELFDATA2LSB;
+    header.e_ident[EI_VERSION] = EV_CURRENT;
+
+    header.e_type              = ET_EXEC;
+    header.e_machine           = EM_RISCV;
+    header.e_version           = EV_CURRENT;
+    header.e_ehsize            = sizeof(Elf64_Ehdr);
+
+    write_fixture(&header, sizeof(header));
+
+    struct forge_elf elf;
+
+    assert(forge_elf_parse(fixture_path, &elf) == 0);
+    assert(elf.machine == EM_RISCV);
+    assert(elf.elf_class == ELFCLASS64);
+
+    forge_elf_free(&elf);
+    remove_fixture();
+
+    test_pass();
+}
+
 static void test_truncated_program_headers(void)
 {
     test_begin("reject truncated program headers");
@@ -391,6 +457,8 @@ int main(void)
     test_unsupported_class();
     test_unsupported_data();
     test_unsupported_machine();
+    test_aarch64_machine();
+    test_riscv64_machine();
     test_truncated_program_headers();
     test_invalid_interpreter();
     test_free_empty();

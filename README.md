@@ -60,21 +60,17 @@ This makes it possible to construct small, purpose-built environments without ma
 
 ## Architecture
 
-At a high level, `forge` consists of five stages:
+`forge` currently supports 64-bit little-endian Linux systems using:
 
-```mermaid
-flowchart LR
-    A[Configuration] --> B[Base Rootfs]
-    A --> C[Binary Resolver]
+| Configuration | ELF machine |
+|---------------|-------------|
+| `x86_64`      | `EM_X86_64` |
+| `aarch64`     | `EM_AARCH64` |
+| `riscv64`     | `EM_RISCV` |
 
-    C --> D[ELF Parser]
-    D --> E[Dependency Graph]
+The ELF parser currently operates on ELF64 binaries. 32-bit ELF binaries and other architectures are rejected explicitly.
 
-    B --> F[Rootfs Assembler]
-    E --> F
-
-    F --> G[Generated Rootfs]
-```
+The requested base architecture must match the architecture of the binaries being assembled. `forge` validates the ELF architecture of requested binaries, dependencies, and dynamic linkers before including them in the generated rootfs.
 
 ### Components
 
@@ -513,7 +509,7 @@ forge/
 - [x] Extract `PT_INTERP`
 - [x] Extract `DT_NEEDED`
 - [x] Detect static binaries
-- [ ] Detect incompatible dynamic linkers
+- [x] Detect incompatible dynamic linkers
 - [x] Add ELF dependency inspection CLI
 
 ### Dependency Resolution
@@ -540,10 +536,10 @@ forge/
 
 ### Special Cases
 
-- [ ] Add support for static binaries
-- [ ] Add support for scripts
-- [ ] Detect script interpreters
-- [ ] Add support for additional architectures
+- [x] Add support for static binaries
+- [x] Add support for scripts
+- [x] Detect script interpreters
+- [x] Add support for additional architectures
 
 ### Reproducibility & UX
 
