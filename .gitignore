@@ -15,3 +15,7 @@ tests/fixtures/rpath.toml
 # rootfs
 rootfs/*
 rootfs/
+
+# Demo
+demo.cast
+demo.gif
