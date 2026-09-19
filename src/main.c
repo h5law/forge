@@ -122,10 +122,34 @@ static int run_build(const char *path)
 
     struct forge_rootfs rootfs;
 
-    if (forge_alpine_prepare(config.base.version, config.base.architecture,
-                             config.rootfs.output) < 0) {
+    if (forge_rootfs_init(&rootfs, config.rootfs.output) < 0) {
+        fprintf(stderr, "failed to initialise rootfs: %s\n", strerror(errno));
         forge_config_free(&config);
         return EXIT_FAILURE;
+    }
+
+    if (strcmp(config.base.distribution, "none") == 0) {
+        if (forge_rootfs_prepare(&rootfs) < 0) {
+            fprintf(stderr, "failed to prepare rootfs: %s\n", strerror(errno));
+            forge_rootfs_free(&rootfs);
+            forge_config_free(&config);
+            return EXIT_FAILURE;
+        }
+    } else {
+        forge_rootfs_free(&rootfs);
+
+        if (forge_alpine_prepare(config.base.version, config.base.architecture,
+                                 config.rootfs.output) < 0) {
+            forge_config_free(&config);
+            return EXIT_FAILURE;
+        }
+
+        if (forge_rootfs_init(&rootfs, config.rootfs.output) < 0) {
+            fprintf(stderr, "failed to initialise rootfs: %s\n",
+                    strerror(errno));
+            forge_config_free(&config);
+            return EXIT_FAILURE;
+        }
     }
 
     if (forge_rootfs_init(&rootfs, config.rootfs.output) < 0) {

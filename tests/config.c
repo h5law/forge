@@ -17,6 +17,35 @@ static void write_fixture(const char *path, const char *contents)
     assert(fclose(file) == 0);
 }
 
+static void test_bare_distribution(void)
+{
+    test_begin("accept bare rootfs distribution");
+
+    char *binary               = "/bin/sh";
+
+    struct forge_config config = {
+            .base =
+                    {
+                           .distribution = "none",
+                           .version      = NULL,
+                           .architecture = "x86_64",
+                           },
+            .rootfs =
+                    {
+                           .output = "./rootfs",
+                           },
+            .binaries =
+                    {
+                           .paths = &binary,
+                           .count = 1,
+                           },
+    };
+
+    assert(forge_config_validate(&config) == 0);
+
+    test_pass();
+}
+
 static void test_basic_config(void)
 {
     const char *path = "tests/fixtures.toml";
@@ -586,6 +615,7 @@ int main(void)
     puts("==================");
     puts("");
 
+    test_bare_distribution();
     test_basic_config();
     test_trailing_comma();
     test_inline_array();

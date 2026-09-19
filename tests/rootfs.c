@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,42 @@ static void test_init(void)
     assert(strcmp(rootfs.path, "/tmp/forge-rootfs") == 0);
 
     forge_rootfs_free(&rootfs);
+
+    test_pass();
+}
+
+static void test_prepare_skeleton(void)
+{
+    const char *output               = "tests/rootfs-skeleton";
+
+    static const char *directories[] = {
+            "bin",  "etc", "home", "lib", "lib64", "mnt",
+            "root", "run", "sbin", "usr", "var",
+    };
+
+    struct forge_rootfs rootfs;
+
+    test_begin("prepare rootfs skeleton");
+
+    remove_rootfs(output);
+
+    assert(forge_rootfs_init(&rootfs, output) == 0);
+    assert(forge_rootfs_prepare(&rootfs) == 0);
+
+    for (size_t i = 0; i < sizeof(directories) / sizeof(directories[0]); ++i) {
+        char path[PATH_MAX];
+
+        assert(snprintf(path, sizeof(path), "%s/%s", output, directories[i]) >
+               0);
+
+        struct stat status;
+
+        assert(stat(path, &status) == 0);
+        assert(S_ISDIR(status.st_mode));
+    }
+
+    forge_rootfs_free(&rootfs);
+    remove_rootfs(output);
 
     test_pass();
 }
@@ -431,6 +468,7 @@ static void test_null_arguments(void)
 int main(void)
 {
     test_init();
+    test_prepare_skeleton();
     test_path();
     test_nested_path();
     test_copy_binary();

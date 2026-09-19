@@ -7,6 +7,8 @@ struct forge_rootfs {
 
 int forge_rootfs_init(struct forge_rootfs *rootfs, const char *path);
 
+int forge_rootfs_prepare(struct forge_rootfs *rootfs);
+
 int forge_rootfs_path(const struct forge_rootfs *rootfs, const char *source,
                       char **destination);
 

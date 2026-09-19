@@ -451,6 +451,62 @@ int forge_rootfs_init(struct forge_rootfs *rootfs, const char *path)
     return 0;
 }
 
+static const char *rootfs_directories[] = {
+        "bin",  "etc", "home", "lib", "lib64", "mnt",
+        "root", "run", "sbin", "usr", "var",
+};
+
+int forge_rootfs_prepare(struct forge_rootfs *rootfs)
+{
+    if (rootfs == NULL || rootfs->path == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (mkdir(rootfs->path, 0755) < 0) {
+        if (errno != EEXIST)
+            return -1;
+
+        struct stat status;
+
+        if (stat(rootfs->path, &status) < 0)
+            return -1;
+
+        if (!S_ISDIR(status.st_mode)) {
+            errno = ENOTDIR;
+            return -1;
+        }
+    }
+
+    for (size_t i = 0;
+         i < sizeof(rootfs_directories) / sizeof(rootfs_directories[0]); ++i) {
+        size_t rootfs_length = strlen(rootfs->path);
+        size_t name_length   = strlen(rootfs_directories[i]);
+
+        if (rootfs_length > SIZE_MAX - name_length - 2) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+
+        char *path = malloc(rootfs_length + name_length + 2);
+
+        if (path == NULL)
+            return -1;
+
+        snprintf(path, rootfs_length + name_length + 2, "%s/%s", rootfs->path,
+                 rootfs_directories[i]);
+
+        if (create_directory(path, 0755) < 0) {
+            free(path);
+            return -1;
+        }
+
+        free(path);
+    }
+
+    return 0;
+}
+
 int forge_rootfs_path(const struct forge_rootfs *rootfs, const char *source,
                       char **destination)
 {

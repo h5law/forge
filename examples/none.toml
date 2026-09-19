@@ -1,0 +1,16 @@
+[base]
+distribution = "none"
+architecture = "x86_64"
+
+[rootfs]
+output = "./rootfs"
+
+[binaries]
+paths = [
+    "/bin/sh",
+    "/bin/cat",
+    "/bin/ps",
+    "/bin/ls",
+    "/usr/bin/vim",
+    "/usr/bin/curl",
+]

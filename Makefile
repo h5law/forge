@@ -37,10 +37,8 @@ TESTS := \
 	$(TEST_RESOLVER) \
 	$(TEST_ROOTFS)
 
-
 .PHONY: all
 all: $(FORGE)
-
 
 $(FORGE): \
 	src/main.c \
@@ -65,7 +63,6 @@ $(FORGE): \
 		src/resolver.c \
 		src/rootfs.c
 
-
 .PHONY: test
 test: $(TESTS)
 	./$(TEST_CONFIG)
@@ -75,13 +72,11 @@ test: $(TESTS)
 	./$(TEST_RESOLVER)
 	./$(TEST_ROOTFS)
 
-
 $(TEST_CONFIG): tests/config.c tests/utils.c src/config.c include/config.h
 	$(CC) $(CFLAGS) -o $@ \
 		tests/config.c \
 		tests/utils.c \
 		src/config.c
-
 
 $(TEST_ALPINE): tests/alpine.c tests/utils.c src/alpine.c include/alpine.h
 	$(CC) $(CFLAGS) -o $@ \
@@ -89,20 +84,17 @@ $(TEST_ALPINE): tests/alpine.c tests/utils.c src/alpine.c include/alpine.h
 		tests/utils.c \
 		src/alpine.c
 
-
 $(TEST_ELF): tests/elf.c tests/utils.c src/elf.c include/elf_parser.h
 	$(CC) $(CFLAGS) -o $@ \
 		tests/elf.c \
 		tests/utils.c \
 		src/elf.c
 
-
 $(TEST_FILE): tests/file.c tests/utils.c src/file.c include/file.h
 	$(CC) $(CFLAGS) -o $@ \
 		tests/file.c \
 		tests/utils.c \
 		src/file.c
-
 
 $(TEST_RESOLVER): \
 	tests/resolver.c \
@@ -121,24 +113,17 @@ $(TEST_RESOLVER): \
 		src/elf.c \
 		src/file.c
 
-
 $(TEST_ROOTFS): \
 	tests/rootfs.c \
 	tests/utils.c \
 	src/rootfs.c \
 	include/rootfs.h
-	$(CC) $(CFLAGS) -o $@ \
-		tests/rootfs.c \
-		tests/utils.c \
-		src/rootfs.c
-
 
 $(FIXTURE_CHILD): tests/fixtures/child.c | $(FIXTURE_CHILD_DIR)
 	$(CC) \
 		-shared \
 		-fPIC \
 		-o $@ $<
-
 
 $(FIXTURE_PARENT): tests/fixtures/parent.c $(FIXTURE_CHILD) | $(FIXTURE_LIB_DIR)
 	$(CC) \
@@ -150,7 +135,6 @@ $(FIXTURE_PARENT): tests/fixtures/parent.c $(FIXTURE_CHILD) | $(FIXTURE_LIB_DIR)
 		-o $@ tests/fixtures/parent.c \
 		-lforge-child
 
-
 $(FIXTURE_RPATH): tests/fixtures/main.c $(FIXTURE_PARENT) | $(FIXTURE_BIN_DIR)
 	$(CC) \
 		-Wl,--disable-new-dtags \
@@ -158,7 +142,6 @@ $(FIXTURE_RPATH): tests/fixtures/main.c $(FIXTURE_PARENT) | $(FIXTURE_BIN_DIR)
 		-L$(FIXTURE_LIB_DIR) \
 		-o $@ tests/fixtures/main.c \
 		-lforge-parent
-
 
 $(FIXTURE_RUNPATH): tests/fixtures/main.c $(FIXTURE_PARENT) | $(FIXTURE_BIN_DIR)
 	$(CC) \
@@ -168,14 +151,12 @@ $(FIXTURE_RUNPATH): tests/fixtures/main.c $(FIXTURE_PARENT) | $(FIXTURE_BIN_DIR)
 		-o $@ tests/fixtures/main.c \
 		-lforge-parent
 
-
 $(FIXTURE_MISSING_LIB): tests/fixtures/child.c | $(FIXTURE_MISSING_DIR)
 	$(CC) \
 		-shared \
 		-fPIC \
 		-Wl,-soname,libforge-missing.so \
 		-o $@ $<
-
 
 $(FIXTURE_MISSING): tests/fixtures/missing_main.c $(FIXTURE_MISSING_LIB) | $(FIXTURE_BIN_DIR)
 	$(CC) \
@@ -187,22 +168,17 @@ $(FIXTURE_MISSING): tests/fixtures/missing_main.c $(FIXTURE_MISSING_LIB) | $(FIX
 		-lforge-missing
 	rm -f $(FIXTURE_MISSING_LIB)
 
-
 $(FIXTURE_CHILD_DIR):
 	mkdir -p $@
-
 
 $(FIXTURE_LIB_DIR):
 	mkdir -p $@
 
-
 $(FIXTURE_BIN_DIR):
 	mkdir -p $@
 
-
 $(FIXTURE_MISSING_DIR):
 	mkdir -p $@
-
 
 .PHONY: clean
 clean:

@@ -565,14 +565,16 @@ int forge_config_validate(const struct forge_config *config)
         return -1;
     }
 
-    if (strcmp(config->base.distribution, "alpine") != 0) {
+    if (strcmp(config->base.distribution, "alpine") != 0 &&
+        strcmp(config->base.distribution, "none") != 0) {
         fprintf(stderr, "unsupported distribution: %s\n",
                 config->base.distribution);
 
         return -1;
     }
 
-    if (config->base.version == NULL || config->base.version[0] == '\0') {
+    if (strcmp(config->base.distribution, "alpine") == 0 &&
+        (config->base.version == NULL || config->base.version[0] == '\0')) {
         fprintf(stderr, "missing required key: base.version\n");
 
         return -1;
